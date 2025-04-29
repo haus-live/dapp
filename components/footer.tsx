@@ -29,7 +29,7 @@ export const Footer = memo(function Footer() {
                 <span className="sr-only">X (Twitter)</span>
               </Link>
               <Link
-                href="https://github.com/haus0x"
+                href="https://github.com/haus-live"
                 target="_blank"
                 className="text-muted-foreground hover:text-foreground"
               >

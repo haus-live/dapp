@@ -39,5 +39,5 @@ The value of an RTA is determined by audience participation and appreciation dur
 1. Clone the repository
 
 ```bash
-git clone https://github.com/haus/haus-platform.git
-cd haus-platform
+git clone https://github.com/haus-live/dapp.git
+cd dapp
