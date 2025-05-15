@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,81 +11,142 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { HausLogo } from "@/components/logo"
-import { Loader2, Check } from "lucide-react"
+import { Loader2, Check, Upload, UserCircle2, AtSign, Hash } from "lucide-react"
 import Image from "next/image"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/auth-context"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { uploadFileToPinata } from "@/services/pinata-service"
+import { ProfileUpdateData } from "@/contexts/auth-context"
 
 interface LoginModalProps {
   isOpen: boolean
   onClose: () => void
-  redirectPath?: string // Add this parameter
+  redirectPath?: string
 }
 
-type LoginStep = "initial" | "connecting" | "detecting-ens" | "name-selection" | "profile-setup" | "social-login"
+type LoginStep = "initial" | "connecting" | "profile-setup" | "name-selection" | "web3-socials"
 
 export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
-  const { connect, updateProfile } = useAuth()
-  const router = useRouter() // Add router
-  const [activeTab, setActiveTab] = useState("web3")
+  const { connect, saveProfile, isNewUser, isConnected, isLoading } = useAuth()
+  const router = useRouter()
   const [step, setStep] = useState<LoginStep>("initial")
   const [loadingMessage, setLoadingMessage] = useState("")
-  const [selectedWallet, setSelectedWallet] = useState("")
-  const [nameChoice, setNameChoice] = useState<"detected" | "custom">("detected")
-  const [customName, setCustomName] = useState("")
+  const [username, setUsername] = useState("")
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [bio, setBio] = useState("")
-
-  const handleWeb3Login = async (walletType: string) => {
-    setSelectedWallet(walletType)
-    setStep("connecting")
-    setLoadingMessage(`Connecting to ${walletType}...`)
-
-    // Simulate connection delay
-    setTimeout(() => {
-      setStep("detecting-ens")
-      setLoadingMessage("Detecting ENS or Lens profile...")
-
-      // Simulate ENS detection
-      setTimeout(() => {
+  const [uploading, setUploading] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarCid, setAvatarCid] = useState<string | null>(null)
+  const [web3Socials, setWeb3Socials] = useState({
+    ens: "",
+    lens: "",
+    farcaster: "",
+    twitter: "",
+    telegram: ""
+  })
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      setStep("initial")
+      setLoadingMessage("")
+      setUploading(false)
+    }
+  }, [isOpen])
+  
+  // Handle automatic profile setup for new users
+  useEffect(() => {
+    if (isOpen && isConnected && isNewUser && step === "initial") {
+      setStep("name-selection")
+    }
+  }, [isOpen, isConnected, isNewUser, step])
+  
+  // Handle completed connection
+  useEffect(() => {
+    if (step === "connecting" && isConnected) {
+      if (isNewUser) {
         setStep("name-selection")
-      }, 2000)
-    }, 2000)
+      } else if (redirectPath) {
+        router.push(redirectPath)
+        onClose()
+      } else {
+        onClose()
+      }
+    }
+  }, [isConnected, isNewUser, step, redirectPath, router, onClose])
+
+  const handlePhantomLogin = async () => {
+    setStep("connecting")
+    setLoadingMessage("Connecting to Phantom...")
+
+    try {
+      const success = await connect()
+      if (!success) {
+        setStep("initial")
+      }
+      // The connected state & redirect will be handled by the useEffect
+    } catch (error) {
+      console.error("Connection error:", error)
+      setStep("initial")
+    }
   }
 
-  const handleSocialLogin = (provider: string) => {
-    setStep("social-login")
-    setLoadingMessage(`Connecting to ${provider}...`)
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click()
+  }
 
-    // Simulate connection delay
-    setTimeout(() => {
-      setLoadingMessage("Creating your decentralized identity...")
-      setTimeout(() => {
-        setLoadingMessage("Generating smart account...")
-        setTimeout(() => {
-          setLoadingMessage("Setting up gasless transactions...")
-          setTimeout(() => {
-            setStep("name-selection")
-          }, 1500)
-        }, 1500)
-      }, 2000)
-    }, 1500)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file')
+      return
+    }
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size should be less than 5MB')
+      return
+    }
+
+    try {
+      // Show preview
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setAvatarPreview(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+
+      // Upload to IPFS
+      setUploading(true)
+      setLoadingMessage("Uploading avatar to IPFS...")
+      
+      const cid = await uploadFileToPinata(file, `user-avatar-${Date.now()}`)
+      setAvatarCid(cid)
+      
+      setUploading(false)
+    } catch (error) {
+      console.error("Avatar upload failed:", error)
+      setUploading(false)
+      alert('Failed to upload avatar. Please try again.')
+    }
   }
 
   const handleNameSelection = () => {
-    if (nameChoice === "custom" && !customName.trim()) {
-      return // Don't proceed if custom name is empty
+    if (!username.trim()) {
+      return // Don't proceed if username is empty
     }
 
-    // Update profile with selected name
-    updateProfile({
-      ensName: nameChoice === "detected" ? "jabyl.eth" : customName,
-    })
-
+    setStep("web3-socials")
+  }
+  
+  const handleWeb3SocialsComplete = () => {
     setStep("profile-setup")
   }
 
@@ -96,22 +157,43 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
   }
 
   const handleCompleteSetup = async () => {
-    // Update profile with bio and categories
-    updateProfile({
-      bio: bio || null,
-      favoriteCategories: selectedCategories,
-      isProfileComplete: true,
-    })
+    try {
+      setLoadingMessage("Saving profile to IPFS...")
+      setUploading(true)
+      
+      // Filter out empty social values
+      const filteredSocials = {
+        ens: web3Socials.ens.trim() || null,
+        lens: web3Socials.lens.trim() || null,
+        farcaster: web3Socials.farcaster.trim() || null,
+        twitter: web3Socials.twitter.trim() || null,
+        telegram: web3Socials.telegram.trim() || null
+      }
+      
+      // Save profile to IPFS
+      const profileData: ProfileUpdateData = {
+        username,
+        avatarCid,
+        categories: selectedCategories,
+        bio: bio || null,
+        web3Socials: filteredSocials
+      }
+      
+      await saveProfile(profileData)
+      
+      setUploading(false)
+      
+      // Close the modal
+      onClose()
 
-    // Connect the wallet
-    await connect(selectedWallet)
-
-    // Close the modal
-    onClose()
-
-    // Redirect to the specified path if provided
-    if (redirectPath) {
-      router.push(redirectPath)
+      // Redirect to the specified path if provided
+      if (redirectPath) {
+        router.push(redirectPath)
+      }
+    } catch (error) {
+      console.error("Failed to save profile:", error)
+      setUploading(false)
+      alert('Failed to save profile. Please try again.')
     }
   }
 
@@ -126,95 +208,30 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
                 <DialogTitle className="text-2xl bauhaus-text">WELCOME TO HAUS</DialogTitle>
               </div>
               <DialogDescription className="text-center">
-                Connect with your preferred method to access the platform
+                Connect your Solana wallet to access the platform
               </DialogDescription>
             </DialogHeader>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-2 w-full">
-                <TabsTrigger value="web3" className="bauhaus-text">
-                  WEB3 WALLET
-                </TabsTrigger>
-                <TabsTrigger value="social" className="bauhaus-text">
-                  SOCIAL LOGIN
-                </TabsTrigger>
-              </TabsList>
+            <div className="mt-6 space-y-4">
+              <Button
+                variant="outline"
+                className="w-full flex justify-between items-center h-14 px-4"
+                onClick={handlePhantomLogin}
+                disabled={isLoading}
+              >
+                <span className="font-medium">Phantom</span>
+                <Image src="/phantom-icon.svg" alt="Phantom" width={32} height={32} 
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = "/placeholder.svg?height=32&width=32"; 
+                  }}
+                />
+              </Button>
 
-              <TabsContent value="web3" className="mt-4 space-y-4">
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleWeb3Login("Phantom")}
-                >
-                  <span className="font-medium">Phantom Wallet</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="Phantom" width={32} height={32} />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleWeb3Login("Alchemy")}
-                >
-                  <span className="font-medium">Alchemy Wallet</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="Alchemy" width={32} height={32} />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleWeb3Login("MetaMask")}
-                >
-                  <span className="font-medium">MetaMask</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="MetaMask" width={32} height={32} />
-                </Button>
-
-                <p className="text-xs text-muted-foreground text-center mt-4">
-                  Connect with your existing web3 wallet to access all features
-                </p>
-              </TabsContent>
-
-              <TabsContent value="social" className="mt-4 space-y-4">
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleSocialLogin("Google")}
-                >
-                  <span className="font-medium">Continue with Google</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="Google" width={32} height={32} />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleSocialLogin("GitHub")}
-                >
-                  <span className="font-medium">Continue with GitHub</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="GitHub" width={32} height={32} />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleSocialLogin("X")}
-                >
-                  <span className="font-medium">Continue with X</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="X" width={32} height={32} />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex justify-between items-center h-14 px-4"
-                  onClick={() => handleSocialLogin("Instagram")}
-                >
-                  <span className="font-medium">Continue with Instagram</span>
-                  <Image src="/placeholder.svg?height=32&width=32" alt="Instagram" width={32} height={32} />
-                </Button>
-
-                <p className="text-xs text-muted-foreground text-center mt-4">
-                  We'll create a decentralized identity for you behind the scenes
-                </p>
-              </TabsContent>
-            </Tabs>
+              <p className="text-xs text-muted-foreground text-center mt-4">
+                Connect your Phantom wallet to access all features on Solana Devnet
+              </p>
+            </div>
 
             <div className="mt-4 text-xs text-center text-muted-foreground">
               By connecting, you agree to our{" "}
@@ -230,16 +247,12 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
         )
 
       case "connecting":
-      case "detecting-ens":
-      case "social-login":
         return (
           <div className="flex flex-col items-center justify-center py-8">
             <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
             <h3 className="text-xl font-bold mb-2">{loadingMessage}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-xs">
-              {step === "social-login"
-                ? "We're setting up your account with account abstraction for a seamless web3 experience."
-                : "Please wait while we connect to your wallet and retrieve your information."}
+              Please approve the connection request in your Phantom wallet.
             </p>
           </div>
         )
@@ -250,55 +263,154 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
             <DialogHeader>
               <DialogTitle>Choose Your Identity</DialogTitle>
               <DialogDescription>
-                We detected an ENS name associated with your wallet. Would you like to use it or create a custom handle?
+                Choose a username and avatar to identify yourself on the platform.
               </DialogDescription>
             </DialogHeader>
 
             <div className="py-6 space-y-6">
-              <div className="flex items-center justify-center mb-4">
-                <div className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-primary">
-                  <Image
-                    src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/21c09ec3-fb44-40b5-9ffc-6fedc032fe3b-I36E2znZKmldANSRQFL5kgjSSjYRka.jpeg"
-                    alt="Profile"
-                    fill
-                    className="object-cover"
-                  />
+              {/* Avatar Upload */}
+              <div className="flex flex-col items-center">
+                <div
+                  className="relative w-24 h-24 rounded-full overflow-hidden border-4 border-primary cursor-pointer group"
+                  onClick={handleAvatarClick}
+                >
+                  {avatarPreview ? (
+                    <Image src={avatarPreview} alt="Avatar" fill className="object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-muted flex items-center justify-center">
+                      <UserCircle2 className="h-16 w-16 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Upload className="h-8 w-8 text-white" />
+                  </div>
                 </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
+                <p className="text-sm text-muted-foreground mt-2">Click to upload avatar</p>
+                {uploading && (
+                  <div className="flex items-center mt-2">
+                    <Loader2 className="h-4 w-4 text-primary animate-spin mr-2" />
+                    <span className="text-sm">Uploading...</span>
+                  </div>
+                )}
+                {avatarCid && (
+                  <p className="text-xs text-green-600 mt-1">Avatar uploaded successfully!</p>
+                )}
               </div>
 
-              <RadioGroup value={nameChoice} onValueChange={(value) => setNameChoice(value as "detected" | "custom")}>
-                <div className="flex items-start space-x-2 p-4 rounded-lg border">
-                  <RadioGroupItem value="detected" id="detected" className="mt-1" />
-                  <div className="flex-1">
-                    <Label htmlFor="detected" className="font-medium text-lg">
-                      jabyl.eth
-                    </Label>
-                    <p className="text-sm text-muted-foreground">Use the ENS name we detected from your wallet</p>
-                  </div>
-                </div>
+              {/* Username Input */}
+              <div>
+                <Label htmlFor="username" className="font-medium text-lg">
+                  Username
+                </Label>
+                <p className="text-sm text-muted-foreground mb-2">Create your unique username</p>
+                <Input
+                  id="username"
+                  placeholder="Enter your username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
 
-                <div className="flex items-start space-x-2 p-4 rounded-lg border mt-2">
-                  <RadioGroupItem value="custom" id="custom" className="mt-1" />
-                  <div className="flex-1">
-                    <Label htmlFor="custom" className="font-medium text-lg">
-                      Custom Handle
-                    </Label>
-                    <p className="text-sm text-muted-foreground mb-2">Create your own unique handle</p>
-                    <Input
-                      placeholder="Enter your custom handle"
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      disabled={nameChoice !== "custom"}
-                    />
-                  </div>
-                </div>
-              </RadioGroup>
-
-              <p className="text-sm text-amber-600">Please note: You won't be able to change your handle later.</p>
+              <p className="text-sm text-amber-600">Please note: You won't be able to change your username later.</p>
             </div>
 
             <DialogFooter>
-              <Button onClick={handleNameSelection} disabled={nameChoice === "custom" && !customName.trim()}>
+              <Button 
+                onClick={handleNameSelection} 
+                disabled={!username.trim() || uploading}
+              >
+                Continue
+              </Button>
+            </DialogFooter>
+          </>
+        )
+        
+      case "web3-socials":
+        return (
+          <>
+            <DialogHeader>
+              <DialogTitle>Your Web3 Socials</DialogTitle>
+              <DialogDescription>
+                Link your decentralized identities (optional)
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-6 space-y-4">
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="ens" className="font-medium">ENS</Label>
+                  <div className="flex items-center mt-1">
+                    <Input
+                      id="ens"
+                      placeholder="yourname.eth"
+                      value={web3Socials.ens}
+                      onChange={(e) => setWeb3Socials({...web3Socials, ens: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="lens" className="font-medium">Lens</Label>
+                  <div className="flex items-center mt-1">
+                    <Input
+                      id="lens"
+                      placeholder="yourname.lens"
+                      value={web3Socials.lens}
+                      onChange={(e) => setWeb3Socials({...web3Socials, lens: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="farcaster" className="font-medium">Farcaster</Label>
+                  <div className="flex items-center mt-1">
+                    <AtSign className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <Input
+                      id="farcaster"
+                      placeholder="username"
+                      value={web3Socials.farcaster}
+                      onChange={(e) => setWeb3Socials({...web3Socials, farcaster: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="twitter" className="font-medium">X / Twitter</Label>
+                  <div className="flex items-center mt-1">
+                    <AtSign className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <Input
+                      id="twitter"
+                      placeholder="username"
+                      value={web3Socials.twitter}
+                      onChange={(e) => setWeb3Socials({...web3Socials, twitter: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="telegram" className="font-medium">Telegram</Label>
+                  <div className="flex items-center mt-1">
+                    <AtSign className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <Input
+                      id="telegram"
+                      placeholder="username"
+                      value={web3Socials.telegram}
+                      onChange={(e) => setWeb3Socials({...web3Socials, telegram: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button onClick={handleWeb3SocialsComplete}>
                 Continue
               </Button>
             </DialogFooter>
@@ -312,6 +424,13 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
               <DialogTitle>Complete Your Profile</DialogTitle>
               <DialogDescription>Add a few more details to personalize your experience</DialogDescription>
             </DialogHeader>
+
+            {uploading && (
+              <div className="flex flex-col items-center justify-center py-4">
+                <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+                <h3 className="text-xl font-bold mb-2">{loadingMessage}</h3>
+              </div>
+            )}
 
             <div className="py-6 space-y-6">
               <div>
@@ -365,7 +484,12 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
             </div>
 
             <DialogFooter>
-              <Button onClick={handleCompleteSetup}>Complete Setup</Button>
+              <Button 
+                onClick={handleCompleteSetup} 
+                disabled={selectedCategories.length === 0 || uploading}
+              >
+                Complete Setup
+              </Button>
             </DialogFooter>
           </>
         )
@@ -376,7 +500,7 @@ export function LoginModal({ isOpen, onClose, redirectPath }: LoginModalProps) {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !uploading && !isLoading && onClose()}>
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">{renderContent()}</DialogContent>
     </Dialog>
   )

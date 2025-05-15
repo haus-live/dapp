@@ -62,11 +62,11 @@ export function UserNav() {
     )
   }
 
-  const displayName =
-    userProfile.ensName ||
+  const displayName = userProfile.username || 
     userProfile.address.substring(0, 6) + "..." + userProfile.address.substring(userProfile.address.length - 4)
+    
   const avatarSrc = userProfile.avatar || "/placeholder.svg?height=32&width=32"
-  const initials = (userProfile.ensName || "WA").substring(0, 2).toUpperCase()
+  const initials = (userProfile.username || "WA").substring(0, 2).toUpperCase()
 
   return (
     <DropdownMenu>

@@ -1,9 +1,9 @@
 import axios from "axios"
+import { PINATA_JWT, IPFS_GATEWAY, PINATA_URL } from "@/lib/constants"
 
 // Constants
 const CHUNK_DURATION = 10 // seconds
-const PINATA_JWT = process.env.NEXT_PUBLIC_PINATA_JWT
-const IPFS_GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs/"
+const PINATA_API_URL = "https://api.pinata.cloud"
 
 // Types
 export interface VideoChunk {
@@ -48,7 +48,7 @@ export async function uploadVideoChunk(chunk: Blob, eventId: string, chunkIndex:
     })
     formData.append("pinataOptions", pinataOptions)
 
-    const response = await axios.post("https://api.pinata.cloud/pinning/pinFileToIPFS", formData, {
+    const response = await axios.post(`${PINATA_API_URL}/pinning/pinFileToIPFS`, formData, {
       headers: {
         Authorization: `Bearer ${PINATA_JWT}`,
         "Content-Type": "multipart/form-data",
@@ -67,7 +67,7 @@ export async function uploadVideoChunk(chunk: Blob, eventId: string, chunkIndex:
  */
 export async function updateVideoManifest(eventId: string, manifest: VideoManifest): Promise<string> {
   try {
-    const response = await axios.post("https://api.pinata.cloud/pinning/pinJSONToIPFS", manifest, {
+    const response = await axios.post(`${PINATA_API_URL}/pinning/pinJSONToIPFS`, manifest, {
       headers: {
         Authorization: `Bearer ${PINATA_JWT}`,
         "Content-Type": "application/json",

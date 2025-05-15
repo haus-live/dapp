@@ -5,11 +5,24 @@
 // User/Authentication types
 export interface UserProfile {
   address: string
-  ensName: string | null
+  username: string
   avatar: string | null
+  avatarCid: string | null
   bio: string | null
   favoriteCategories: string[]
   isProfileComplete: boolean
+  profileCid: string | null
+  web3Socials: {
+    ens: string | null
+    lens: string | null
+    farcaster: string | null
+    twitter: string | null
+    telegram: string | null
+  }
+  id: string
+  createdAt: string
+  events: string[]
+  tickets: string[]
 }
 
 export interface AuthState {
@@ -23,6 +36,7 @@ export interface AuthState {
 export interface Event {
   id: string
   title: string
+  description: string
   creator: string
   creatorAddress: string
   category: string
@@ -31,14 +45,9 @@ export interface Event {
   participants: number
   maxParticipants: number
   ticketPrice: number
-  description: string
   image: string
-  status: "created" | "upcoming" | "live" | "completed" | "finalized"
-  videoUrl?: string
-  contentUri?: string
-  totalTips?: number
-  highestTipper?: string
-  highestTipAmount?: number
+  status: "created" | "live" | "completed" | "finalized"
+  contentUri: string
 }
 
 export type EventCategory = 
@@ -58,8 +67,8 @@ export interface Ticket {
   id: string
   eventId: string
   owner: string
-  used: boolean
-  createdAt: string
+  price: number
+  purchasedAt: string
 }
 
 // Chat/Messages types
@@ -79,8 +88,6 @@ export interface Tip {
   id: string
   eventId: string
   sender: string
-  senderAddress: string
   amount: number
   timestamp: string
-  message?: string
 } 

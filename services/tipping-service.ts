@@ -20,7 +20,7 @@ export async function sendTip(eventId: string, amount: number, wallet: WalletCon
 
   try {
     // Connect to Solana
-    const connection = new Connection(process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC!)
+    const connection = new Connection(process.env.NEXT_PUBLIC_ALCHEMY_RPC || 'https://solana-devnet.g.alchemy.com/v2/hQ3pyvJGx66ieRT9hyuPNA0o2e17yWCK')
 
     // Create provider
     const provider = new AnchorProvider(

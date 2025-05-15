@@ -7,6 +7,7 @@ import { Footer } from "@/components/footer"
 import { DelegationProvider } from "@/contexts/delegation-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import { EventsProvider } from "@/contexts/events-context"
+import { SolanaWalletProvider } from "@/contexts/solana-wallet-context"
 import { AuthGuard } from "@/components/auth-guard"
 import { HIDDEN_MESSAGE_1 } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -60,25 +61,27 @@ export default function RootLayout({
         "min-h-screen bg-background antialiased"
       )}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          <AuthProvider>
-            <DelegationProvider>
-              <EventsProvider>
-                <AuthGuard>
-                  <div className="relative flex min-h-screen flex-col">
-                    <div className="flex-1 flex flex-col items-center">
-                      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="animate-in fade-in duration-500 ease-out">
-                          {children}
-                        </div>
-                      </main>
+          <SolanaWalletProvider>
+            <AuthProvider>
+              <DelegationProvider>
+                <EventsProvider>
+                  <AuthGuard>
+                    <div className="relative flex min-h-screen flex-col">
+                      <div className="flex-1 flex flex-col items-center">
+                        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                          <div className="animate-in fade-in duration-500 ease-out">
+                            {children}
+                          </div>
+                        </main>
+                      </div>
+                      <Footer />
                     </div>
-                    <Footer />
-                  </div>
-                  <Toaster />
-                </AuthGuard>
-              </EventsProvider>
-            </DelegationProvider>
-          </AuthProvider>
+                    <Toaster />
+                  </AuthGuard>
+                </EventsProvider>
+              </DelegationProvider>
+            </AuthProvider>
+          </SolanaWalletProvider>
         </ThemeProvider>
         {/* Hidden comment with encrypted message */}
         {/* <!-- jabyl: cmVhbGl0eSAtIGlzIHlldCB0byBiZSBpbnZlbnRlZC4= --> */}

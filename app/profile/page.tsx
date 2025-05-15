@@ -35,6 +35,7 @@ import { QuickAccess } from "@/components/quick-access"
 import { Breadcrumbs } from "@/components/breadcrumbs"
 import { useAuth } from "@/contexts/auth-context"
 import { useEvents } from "@/contexts/events-context"
+import { ProfileEditModal } from "@/components/profile-edit-modal"
 
 // Mock data for user tickets
 const userTickets = [
@@ -62,29 +63,10 @@ const userTickets = [
 
 export default function Profile() {
   const router = useRouter()
-  const { userProfile, updateProfile } = useAuth()
+  const { userProfile } = useAuth()
   const { userEvents } = useEvents()
-  const [editMode, setEditMode] = useState(false)
-  const [profileData, setProfileData] = useState({
-    name: userProfile?.ensName || "jabyl.eth",
-    username: userProfile?.ensName || "jabyl.eth",
-    bio: userProfile?.bio || "",
-    avatar:
-      userProfile?.avatar ||
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/21c09ec3-fb44-40b5-9ffc-6fedc032fe3b-I36E2znZKmldANSRQFL5kgjSSjYRka.jpeg",
-    banner: "/placeholder.svg?height=400&width=1200",
-    socials: {
-      ens: userProfile?.ensName || "jabyl.eth",
-      lens: "jabyl.lens",
-      farcaster: "@jabyl",
-      twitter: "@jabyl0x",
-      telegram: "@jabyl",
-    },
-  })
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(userProfile?.favoriteCategories || [])
-  const [bio, setBio] = useState(userProfile?.bio || "")
-
-  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [banner, setBanner] = useState("/placeholder.svg?height=400&width=1200")
   const bannerInputRef = useRef<HTMLInputElement>(null)
 
   const formatDate = (dateString: string) => {
@@ -98,63 +80,43 @@ export default function Profile() {
     })
   }
 
-  const handleAvatarUpload = () => {
-    if (avatarInputRef.current) {
-      avatarInputRef.current.click()
-    }
-  }
-
   const handleBannerUpload = () => {
     if (bannerInputRef.current) {
       bannerInputRef.current.click()
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: "avatar" | "banner") => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
       const imageUrl = URL.createObjectURL(file)
-
-      if (type === "avatar") {
-        setProfileData({ ...profileData, avatar: imageUrl })
-      } else {
-        setProfileData({ ...profileData, banner: imageUrl })
-      }
+      setBanner(imageUrl)
     }
   }
 
-  const handleSaveProfile = () => {
-    setEditMode(false)
-    // Update profile in auth context
-    updateProfile({
-      bio: profileData.bio,
-      favoriteCategories: selectedCategories,
-      isProfileComplete: true,
-    })
-  }
-
-  const handleCategoryToggle = (category: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : prev.length < 3 ? [...prev, category] : prev,
+  if (!userProfile) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center texture-bg">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-4">Please connect your wallet</h1>
+          <p className="text-muted-foreground mb-6">You need to connect your wallet to view your profile</p>
+          <Button onClick={() => router.push('/')}>Return to Home</Button>
+        </div>
+      </div>
     )
   }
 
-  const handleSaveBio = () => {
-    updateProfile({
-      bio: bio,
-      isProfileComplete: true,
-    })
+  // Get username or address for display
+  const displayName = userProfile.username || userProfile.address.substring(0, 10) + '...'
+  
+  // Get web3 socials from profile
+  const web3Socials = userProfile.web3Socials || {
+    ens: null,
+    lens: null,
+    farcaster: null,
+    twitter: null,
+    telegram: null
   }
-
-  const handleSaveCategories = () => {
-    updateProfile({
-      favoriteCategories: selectedCategories,
-      isProfileComplete: true,
-    })
-  }
-
-  // Check if profile needs completion
-  const isProfileIncomplete = !userProfile?.isProfileComplete
 
   return (
     <div className="min-h-screen flex flex-col texture-bg">
@@ -167,157 +129,52 @@ export default function Profile() {
         {/* Profile Header */}
         <div className="mb-8">
           <div className="relative">
-            <div
-              className={`h-48 rounded-lg overflow-hidden ${editMode ? "cursor-pointer group" : ""}`}
-              onClick={editMode ? handleBannerUpload : undefined}
-            >
+            <div className="h-48 rounded-lg overflow-hidden cursor-pointer group" onClick={handleBannerUpload}>
               <img
-                src={profileData.banner || "/placeholder.svg"}
+                src={banner}
                 alt="Profile banner"
                 className="w-full h-full object-cover"
               />
-              {editMode && (
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <div className="bg-background/80 p-3 rounded-full">
-                    <ImageIcon className="h-6 w-6 text-primary" />
-                  </div>
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="bg-background/80 p-3 rounded-full">
+                  <ImageIcon className="h-6 w-6 text-primary" />
                 </div>
-              )}
+              </div>
             </div>
             <div className="absolute -bottom-16 left-8">
-              <div
-                className={`relative ${editMode ? "cursor-pointer group" : ""}`}
-                onClick={editMode ? handleAvatarUpload : undefined}
-              >
+              <div className="relative">
                 <Avatar className="h-32 w-32 border-4 border-background">
-                  <AvatarImage src={profileData.avatar} alt={profileData.name} />
-                  <AvatarFallback>{profileData.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                  <AvatarImage src={userProfile.avatar || "/placeholder.svg?height=128&width=128"} alt={displayName} />
+                  <AvatarFallback>{(userProfile.username || "User").slice(0, 2).toUpperCase()}</AvatarFallback>
                 </Avatar>
-                {editMode && (
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-full flex items-center justify-center">
-                    <div className="bg-background/80 p-2 rounded-full">
-                      <Camera className="h-5 w-5 text-primary" />
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
             <div className="absolute top-4 right-4">
-              {editMode ? (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="bg-primary text-primary-foreground"
-                  onClick={handleSaveProfile}
-                >
-                  Save Profile
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" className="bg-background/80" onClick={() => setEditMode(true)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Profile
-                </Button>
-              )}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-background/80"
+                onClick={() => setIsEditModalOpen(true)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Profile
+              </Button>
             </div>
           </div>
           <div className="mt-20 ml-8">
-            <h1 className="text-3xl font-bold">{profileData.name}</h1>
-            <p className="text-muted-foreground">{profileData.username}</p>
+            <h1 className="text-3xl font-bold">{displayName}</h1>
+            <p className="text-muted-foreground">{userProfile.address}</p>
           </div>
         </div>
 
-        {/* Hidden file inputs */}
-        <input
-          type="file"
-          ref={avatarInputRef}
-          className="hidden"
-          accept="image/*"
-          onChange={(e) => handleFileChange(e, "avatar")}
-        />
+        {/* Hidden file input for banner */}
         <input
           type="file"
           ref={bannerInputRef}
           className="hidden"
           accept="image/*"
-          onChange={(e) => handleFileChange(e, "banner")}
+          onChange={handleFileChange}
         />
-
-        {/* Profile Completion Cards (shown only if profile is incomplete) */}
-        {isProfileIncomplete && (
-          <div className="mb-8 space-y-4">
-            <h2 className="text-xl font-bold">Complete Your Profile</h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Bio Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <User className="h-5 w-5 mr-2 text-primary" />
-                    Add Your Bio
-                  </CardTitle>
-                  <CardDescription>Tell the community about yourself</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    placeholder="Share your story, interests, or expertise..."
-                    className="min-h-24"
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                  />
-                </CardContent>
-                <CardFooter>
-                  <Button onClick={handleSaveBio} className="w-full">
-                    <PlusCircle className="h-4 w-4 mr-2" />
-                    Add Bio
-                  </Button>
-                </CardFooter>
-              </Card>
-
-              {/* Categories Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Brush className="h-5 w-5 mr-2 text-primary" />
-                    Pick Your Favorites
-                  </CardTitle>
-                  <CardDescription>Select up to 3 art categories you're interested in</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      "standup-comedy",
-                      "performance-art",
-                      "poetry-slam",
-                      "open-mic",
-                      "live-painting",
-                      "creative-workshop",
-                    ].map((category) => (
-                      <div
-                        key={category}
-                        className={`p-3 rounded-lg border cursor-pointer flex items-center ${
-                          selectedCategories.includes(category) ? "border-primary bg-primary/5" : ""
-                        }`}
-                        onClick={() => handleCategoryToggle(category)}
-                      >
-                        {selectedCategories.includes(category) && <Check className="h-4 w-4 text-primary mr-2" />}
-                        <span className="capitalize">{category.replace(/-/g, " ")}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {selectedCategories.length}/3 categories selected
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button onClick={handleSaveCategories} className="w-full">
-                    <Check className="h-4 w-4 mr-2" />
-                    Save Preferences
-                  </Button>
-                </CardFooter>
-              </Card>
-            </div>
-          </div>
-        )}
 
         {/* Profile Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -328,39 +185,9 @@ export default function Profile() {
                 <CardTitle>About</CardTitle>
               </CardHeader>
               <CardContent>
-                {editMode ? (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        value={profileData.name}
-                        onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        value={profileData.username}
-                        onChange={(e) => setProfileData({ ...profileData, username: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="bio">Bio</Label>
-                      <Textarea
-                        id="bio"
-                        value={profileData.bio}
-                        onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
-                        className="min-h-32"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">
-                    {userProfile?.bio || "No bio added yet. Click 'Edit Profile' to add one."}
-                  </p>
-                )}
+                <p className="text-muted-foreground">
+                  {userProfile.bio || "No bio added yet. Click 'Edit Profile' to add one."}
+                </p>
               </CardContent>
             </Card>
 
@@ -369,117 +196,29 @@ export default function Profile() {
                 <CardTitle>Web3 Socials</CardTitle>
               </CardHeader>
               <CardContent>
-                {editMode ? (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="ens">ENS</Label>
-                      <Input
-                        id="ens"
-                        value={profileData.socials.ens}
-                        onChange={(e) =>
-                          setProfileData({
-                            ...profileData,
-                            socials: { ...profileData.socials, ens: e.target.value },
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lens">Lens</Label>
-                      <Input
-                        id="lens"
-                        value={profileData.socials.lens}
-                        onChange={(e) =>
-                          setProfileData({
-                            ...profileData,
-                            socials: { ...profileData.socials, lens: e.target.value },
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="farcaster">Farcaster</Label>
-                      <Input
-                        id="farcaster"
-                        value={profileData.socials.farcaster}
-                        onChange={(e) =>
-                          setProfileData({
-                            ...profileData,
-                            socials: { ...profileData.socials, farcaster: e.target.value },
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="twitter" className="flex items-center">
-                        <Twitter className="h-4 w-4 mr-2" />X / Twitter
-                      </Label>
-                      <div className="flex">
-                        <Input
-                          id="twitter"
-                          value={profileData.socials.twitter.replace("@", "")}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              socials: { ...profileData.socials, twitter: `@${e.target.value.replace("@", "")}` },
-                            })
-                          }
-                          placeholder="username (without @)"
-                        />
-                        <Button
-                          variant="outline"
-                          className="ml-2"
-                          onClick={() =>
-                            window.open(`https://x.com/${profileData.socials.twitter.replace("@", "")}`, "_blank")
-                          }
-                        >
-                          Link
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="telegram" className="flex items-center">
-                        <Send className="h-4 w-4 mr-2" />
-                        Telegram
-                      </Label>
-                      <div className="flex">
-                        <Input
-                          id="telegram"
-                          value={profileData.socials.telegram.replace("@", "")}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              socials: { ...profileData.socials, telegram: `@${e.target.value.replace("@", "")}` },
-                            })
-                          }
-                          placeholder="username (without @)"
-                        />
-                        <Button
-                          variant="outline"
-                          className="ml-2"
-                          onClick={() =>
-                            window.open(`https://t.me/${profileData.socials.telegram.replace("@", "")}`, "_blank")
-                          }
-                        >
-                          Link
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
+                <div className="space-y-2">
+                  {web3Socials.ens && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">ENS</span>
-                      <span>{profileData.socials.ens}</span>
+                      <span>{web3Socials.ens}</span>
                     </div>
+                  )}
+                  
+                  {web3Socials.lens && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Lens</span>
-                      <span>{profileData.socials.lens}</span>
+                      <span>{web3Socials.lens}</span>
                     </div>
+                  )}
+                  
+                  {web3Socials.farcaster && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Farcaster</span>
-                      <span>{profileData.socials.farcaster}</span>
+                      <span>{web3Socials.farcaster}</span>
                     </div>
+                  )}
+                  
+                  {web3Socials.twitter && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground flex items-center">
                         <Twitter className="h-4 w-4 mr-1" /> X / Twitter
@@ -489,12 +228,15 @@ export default function Profile() {
                         size="sm"
                         className="p-0 h-auto text-primary hover:text-primary/80"
                         onClick={() =>
-                          window.open(`https://x.com/${profileData.socials.twitter.replace("@", "")}`, "_blank")
+                          window.open(`https://x.com/${web3Socials.twitter.replace("@", "")}`, "_blank")
                         }
                       >
-                        {profileData.socials.twitter}
+                        {web3Socials.twitter}
                       </Button>
                     </div>
+                  )}
+                  
+                  {web3Socials.telegram && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground flex items-center">
                         <Send className="h-4 w-4 mr-1" /> Telegram
@@ -504,46 +246,52 @@ export default function Profile() {
                         size="sm"
                         className="p-0 h-auto text-primary hover:text-primary/80"
                         onClick={() =>
-                          window.open(`https://t.me/${profileData.socials.telegram.replace("@", "")}`, "_blank")
+                          window.open(`https://t.me/${web3Socials.telegram.replace("@", "")}`, "_blank")
                         }
                       >
-                        {profileData.socials.telegram}
+                        {web3Socials.telegram}
                       </Button>
                     </div>
-                  </div>
-                )}
+                  )}
+                  
+                  {!web3Socials.ens && !web3Socials.lens && !web3Socials.farcaster && !web3Socials.twitter && !web3Socials.telegram && (
+                    <p className="text-muted-foreground">No Web3 socials added yet. Click 'Edit Profile' to add some.</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Wallet</CardTitle>
+                <CardTitle>Favorite Categories</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Address</span>
-                    <span className="font-mono">
-                      {userProfile?.address.substring(0, 6) +
-                        "..." +
-                        userProfile?.address.substring(userProfile?.address.length - 4)}
-                    </span>
+                {userProfile.favoriteCategories && userProfile.favoriteCategories.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-2">
+                    {userProfile.favoriteCategories.map((category) => (
+                      <div
+                        key={category}
+                        className="flex items-center p-2 rounded-md border bg-background/50"
+                      >
+                        <div className="mr-2">
+                          <ArtCategoryIcon category={category as any} className="h-5 w-5" />
+                        </div>
+                        <span className="capitalize">{category.replace(/-/g, " ")}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Balance</span>
-                    <span>0.83 SOL</span>
-                  </div>
-                </div>
-                <Button className="w-full mt-4" onClick={() => router.push("/profile/wallet")}>
-                  <Wallet className="h-4 w-4 mr-2" />
-                  Manage Wallet
-                </Button>
+                ) : (
+                  <p className="text-muted-foreground">No favorite categories selected yet. Click 'Edit Profile' to add some.</p>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-2">
+          {/* Profile Edit Modal */}
+          <ProfileEditModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} />
+
+          {/* Main Content - rest of page */}
+          <div className="lg:col-span-2 space-y-6">
             <Tabs defaultValue="events">
               <TabsList className="w-full">
                 <TabsTrigger value="events" className="flex-1">
@@ -554,159 +302,214 @@ export default function Profile() {
                   <Ticket className="h-4 w-4 mr-2" />
                   Your Tickets
                 </TabsTrigger>
-                <TabsTrigger value="curation" className="flex-1">
+                <TabsTrigger value="wallet" className="flex-1">
+                  <Wallet className="h-4 w-4 mr-2" />
+                  Wallet
+                </TabsTrigger>
+                <TabsTrigger value="settings" className="flex-1">
                   <Settings className="h-4 w-4 mr-2" />
-                  Curation
+                  Settings
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="events" className="mt-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold">Your Events</h2>
-                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90">Create New Event</Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {userEvents.map((event) => (
-                    <Card key={event.id} className="overflow-hidden">
-                      <div className="relative h-48">
-                        <img
-                          src={event.image || "/placeholder.svg"}
-                          alt={event.title}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute top-2 right-2 bg-background/80 rounded-full p-1">
-                          <ArtCategoryIcon category={event.category as any} size="sm" />
-                        </div>
-                        <div className="absolute top-2 left-2">
-                          <span
-                            className={`px-2 py-1 rounded text-xs ${
-                              event.status === "upcoming"
-                                ? "bg-blue-500 text-white"
-                                : event.status === "completed"
-                                  ? "bg-green-500 text-white"
-                                  : "bg-gray-500 text-white"
-                            }`}
-                          >
-                            {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                          </span>
-                        </div>
-                      </div>
-                      <CardHeader className="p-4">
-                        <CardTitle className="text-lg">{event.title}</CardTitle>
-                        <CardDescription>{event.category.replace("-", " ")}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4 pt-0 space-y-2">
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Calendar className="h-4 w-4 mr-2" />
-                          <span>{formatDate(event.date)}</span>
-                        </div>
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Clock className="h-4 w-4 mr-2" />
-                          <span>{event.duration} minutes</span>
-                        </div>
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Users className="h-4 w-4 mr-2" />
-                          <span>
-                            {event.participants}/{event.maxParticipants} participants
-                          </span>
-                        </div>
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <DollarSign className="h-4 w-4 mr-2" />
-                          <span>{event.ticketPrice} SOL</span>
-                        </div>
-                      </CardContent>
-                      <div className="p-4 pt-0 flex space-x-2">
-                        <Button variant="outline" size="sm" className="flex-1">
-                          Edit
-                        </Button>
-                        {event.status === "upcoming" && (
-                          <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90">
-                            Go Live
-                          </Button>
-                        )}
-                        {event.status === "completed" && (
-                          <Button size="sm" className="flex-1">
-                            View NFT
-                          </Button>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="tickets" className="mt-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold">Your Tickets</h2>
-                  <Button variant="outline" onClick={() => router.push("/event-market")}>
-                    Browse Events
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {userTickets.map((ticket) => (
-                    <Card key={ticket.id} className="overflow-hidden">
-                      <div className="relative h-48">
-                        <img
-                          src={ticket.image || "/placeholder.svg"}
-                          alt={ticket.eventTitle}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute top-2 right-2 bg-background/80 rounded-full p-1">
-                          <ArtCategoryIcon category={ticket.category as any} size="sm" />
-                        </div>
-                        <div className="absolute top-2 left-2">
-                          <span className="px-2 py-1 rounded text-xs bg-blue-500 text-white">
-                            {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
-                          </span>
-                        </div>
-                      </div>
-                      <CardHeader className="p-4">
-                        <CardTitle className="text-lg">{ticket.eventTitle}</CardTitle>
-                        <CardDescription>by {ticket.creator}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4 pt-0 space-y-2">
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <Calendar className="h-4 w-4 mr-2" />
-                          <span>{formatDate(ticket.date)}</span>
-                        </div>
-                        <div className="flex items-center text-sm text-muted-foreground">
-                          <DollarSign className="h-4 w-4 mr-2" />
-                          <span>{ticket.ticketPrice} SOL</span>
-                        </div>
-                      </CardContent>
-                      <div className="p-4 pt-0 flex space-x-2">
-                        <Button variant="outline" size="sm" className="flex-1">
-                          View Details
-                        </Button>
-                        <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90">
-                          Join Event
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="curation" className="mt-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold">Curation</h2>
-                </div>
-
-                <Card className="p-6 text-center">
-                  <div className="py-12">
-                    <h3 className="text-xl font-medium mb-2">No Curation Proposals Yet</h3>
-                    <p className="text-muted-foreground mb-6">
-                      You haven't made or received any curation proposals yet.
-                    </p>
-                    <Button
-                      className="bg-primary text-primary-foreground hover:bg-primary/90"
-                      onClick={() => router.push("/event-market")}
-                    >
-                      Browse Events to Curate
-                    </Button>
+              <TabsContent value="events" className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold">Your Events</h2>
+                    <Button onClick={() => router.push("/event-factory")}>Create New Event</Button>
                   </div>
+
+                  {userEvents.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {userEvents.map((event) => (
+                        <Card key={event.id} className="overflow-hidden">
+                          <div className="aspect-video relative">
+                            <img
+                              src={event.image || "/placeholder.svg?height=200&width=400"}
+                              alt={event.title}
+                              className="object-cover w-full h-full"
+                            />
+                            <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs">
+                              {event.status}
+                            </div>
+                          </div>
+                          <CardHeader>
+                            <CardTitle className="truncate">{event.title}</CardTitle>
+                            <CardDescription className="truncate">
+                              <div className="flex items-center">
+                                <ArtCategoryIcon category={event.category as any} className="h-4 w-4 mr-1" />
+                                <span className="capitalize">{event.category.replace(/-/g, " ")}</span>
+                              </div>
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center text-muted-foreground">
+                                <Calendar className="h-4 w-4 mr-2" />
+                                {formatDate(event.date)}
+                              </div>
+                              <div className="flex items-center text-muted-foreground">
+                                <Clock className="h-4 w-4 mr-2" />
+                                {event.duration} minutes
+                              </div>
+                              <div className="flex items-center text-muted-foreground">
+                                <Users className="h-4 w-4 mr-2" />
+                                {event.participants}/{event.maxParticipants} participants
+                              </div>
+                              <div className="flex items-center text-muted-foreground">
+                                <DollarSign className="h-4 w-4 mr-2" />
+                                {event.ticketPrice} SOL per ticket
+                              </div>
+                            </div>
+                          </CardContent>
+                          <CardFooter className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => router.push(`/event/${event.id}`)}
+                            >
+                              View
+                            </Button>
+                            {event.status === "upcoming" || event.status === "created" ? (
+                              <Button
+                                className="flex-1"
+                                onClick={() => router.push(`/event-room/${event.id}`)}
+                              >
+                                Go Live
+                              </Button>
+                            ) : (
+                              <Button
+                                className="flex-1"
+                                onClick={() => router.push(`/event-room/${event.id}`)}
+                              >
+                                Join Room
+                              </Button>
+                            )}
+                          </CardFooter>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card className="p-8 text-center">
+                      <div className="space-y-4">
+                        <h3 className="text-xl font-semibold">No Events Yet</h3>
+                        <p className="text-muted-foreground">
+                          You haven't created any events yet. Start your first event by clicking the button below.
+                        </p>
+                        <Button onClick={() => router.push("/event-factory")}>Create Your First Event</Button>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="tickets" className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold">Your Tickets</h2>
+                    <Button onClick={() => router.push("/event-market")}>Browse Events</Button>
+                  </div>
+
+                  {userTickets.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {userTickets.map((ticket) => (
+                        <Card key={ticket.id} className="overflow-hidden">
+                          <div className="aspect-video relative">
+                            <img
+                              src={ticket.image}
+                              alt={ticket.eventTitle}
+                              className="object-cover w-full h-full"
+                            />
+                            <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs">
+                              {ticket.status}
+                            </div>
+                          </div>
+                          <CardHeader>
+                            <CardTitle className="truncate">{ticket.eventTitle}</CardTitle>
+                            <CardDescription className="truncate">
+                              <div className="flex items-center">
+                                <ArtCategoryIcon category={ticket.category as any} className="h-4 w-4 mr-1" />
+                                <span className="capitalize">{ticket.category.replace(/-/g, " ")}</span>
+                              </div>
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center text-muted-foreground">
+                                <Calendar className="h-4 w-4 mr-2" />
+                                {formatDate(ticket.date)}
+                              </div>
+                              <div className="flex items-center text-muted-foreground">
+                                <DollarSign className="h-4 w-4 mr-2" />
+                                {ticket.ticketPrice} SOL ticket price
+                              </div>
+                            </div>
+                          </CardContent>
+                          <CardFooter>
+                            <Button
+                              className="w-full"
+                              onClick={() => router.push(`/event-room/${ticket.id}`)}
+                            >
+                              {new Date(ticket.date) > new Date() ? "Join When Live" : "Join Room"}
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card className="p-8 text-center">
+                      <div className="space-y-4">
+                        <h3 className="text-xl font-semibold">No Tickets Yet</h3>
+                        <p className="text-muted-foreground">
+                          You haven't purchased any tickets yet. Browse events and get your first ticket.
+                        </p>
+                        <Button onClick={() => router.push("/event-market")}>Explore Events</Button>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="wallet" className="pt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Wallet Settings</CardTitle>
+                    <CardDescription>Manage your wallet and transactions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="border p-4 rounded-lg">
+                        <div className="font-semibold mb-1">Connected Address</div>
+                        <div className="font-mono text-sm break-all">{userProfile.address}</div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => router.push('/profile/wallet')}
+                        className="w-full"
+                      >
+                        View Wallet Details
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="settings" className="pt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Account Settings</CardTitle>
+                    <CardDescription>Manage your account preferences</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <div>
+                        <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Profile Details
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
                 </Card>
               </TabsContent>
             </Tabs>

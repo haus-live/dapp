@@ -22,6 +22,10 @@ import { QuickAccess } from "@/components/quick-access"
 import { useAuth } from "@/contexts/auth-context"
 import { useEvents } from "@/contexts/events-context"
 import { v4 as uuidv4 } from "uuid"
+import { mintEvent } from "@/lib/solana/event-minter"
+import { useSolanaWallet } from "@/contexts/solana-wallet-context"
+import { toast } from "@/components/ui/use-toast"
+import { clusterApiUrl, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
 
 type Step = "category" | "details" | "format" | "sales" | "mint"
 type Category =
@@ -38,6 +42,7 @@ export default function EventFactory() {
   const router = useRouter()
   const { userProfile } = useAuth()
   const { addEvent } = useEvents()
+  const { publicKey, signTransaction, signAllTransactions, connected } = useSolanaWallet()
 
   const [step, setStep] = useState<Step>("details")
   const [formData, setFormData] = useState({
@@ -57,6 +62,8 @@ export default function EventFactory() {
     noCap: false,
   })
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string>("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [txSignature, setTxSignature] = useState<string | null>(null)
 
   // Update default prices when duration changes
   useEffect(() => {
@@ -86,42 +93,306 @@ export default function EventFactory() {
     }
   }
 
-  const handleNext = () => {
-    if (step === "details") setStep("category")
-    else if (step === "category") setStep("format")
-    else if (step === "format") setStep("sales")
-    else if (step === "sales") setStep("mint")
-    else if (step === "mint") {
-      // Create the event and add it to global state
-      const newEvent = {
-        id: uuidv4(),
-        title: formData.title || "Untitled Event",
-        creator: userProfile?.ensName || "anonymous.eth",
-        creatorAddress: userProfile?.address || "",
-        category: formData.category,
-        date: formData.date
-          ? new Date(
-              formData.date.setHours(
-                Number.parseInt(formData.time.split(":")[0]),
-                Number.parseInt(formData.time.split(":")[1]),
-              ),
-            ).toISOString()
-          : new Date().toISOString(),
-        duration: formData.duration,
-        participants: 0,
-        maxParticipants: formData.noCap ? 1000 : formData.ticketsAmount,
-        ticketPrice: formData.ticketPrice,
-        description: formData.description || "No description provided",
-        image: bannerPreviewUrl || "/placeholder.svg?height=200&width=400",
-        status: "upcoming",
+  // Add this debugging function at the top after the state declarations
+  const debug = (message: string, data?: any) => {
+    console.log(`%c[DEBUG] ${message}`, 'background: #333; color: lime', data || '');
+  };
+
+  // Enhanced handleMintEvent function with improved wallet handling
+  const handleMintEvent = async () => {
+    debug("Mint button clicked");
+
+    // Check for window.solana and window.phantom (Phantom wallet global)
+    if (typeof window === 'undefined') {
+      debug("Not running in browser context");
+      return;
+    }
+    
+    debug("Environment check:", {
+      hasPhantom: !!window.phantom?.solana,
+      hasWindowSolana: !!window.solana,
+      isPhantomConnected: window.phantom?.solana?.isConnected
+    });
+      
+    if (!window.phantom?.solana) {
+      debug("Phantom not found in window");
+      toast({
+        title: "Phantom wallet not detected",
+        description: "Please install Phantom wallet extension and refresh",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Check wallet connection status
+    debug("Connection status:", { 
+      userProfile: !!userProfile, 
+      publicKey: !!publicKey, 
+      signTransaction: !!signTransaction, 
+      signAllTransactions: !!signAllTransactions,
+      phantomConnected: window.phantom?.solana?.isConnected
+    });
+
+    // If not connected, try direct connection
+    if (!publicKey || !window.phantom.solana.isConnected) {
+      debug("No connected wallet found, attempting direct connection");
+      
+      try {
+        const resp = await window.phantom.solana.connect();
+        debug("Direct connection successful", resp.publicKey.toString());
+        
+        // We'll need to refresh the page to update context state
+        toast({
+          title: "Wallet connected",
+          description: "Your wallet is now connected. Please try minting again.",
+          variant: "default"
+        });
+        
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+        return;
+      } catch (error) {
+        debug("Direct wallet connection failed", error);
+        toast({
+          title: "Wallet connection failed",
+          description: "Please try connecting your wallet manually first",
+          variant: "destructive"
+        });
+        return;
       }
+    }
 
+    // Validate form data
+    if (!formData.category || !formData.title || !formData.date) {
+      debug("Form data incomplete");
+      toast({
+        title: "Incomplete form data",
+        description: "Please fill in all required fields before minting",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      debug("Creating wallet adapter for Anchor");
+      
+      // For consistent behavior, prefer the window.phantom.solana methods
+      // which are directly tied to the Phantom extension
+      const phantomSolana = window.phantom.solana;
+      
+      // Create wallet adapter with the most reliable signing methods
+      const wallet = {
+        publicKey: new PublicKey(phantomSolana.publicKey?.toString() || publicKey?.toString() || ''),
+        signTransaction: async (transaction: Transaction) => {
+          debug("Signing transaction...");
+          const signedTx = await phantomSolana.signTransaction(transaction);
+          debug("Transaction signed successfully");
+          return signedTx;
+        },
+        signAllTransactions: async (transactions: Transaction[]) => {
+          debug("Signing multiple transactions...");
+          const signedTxs = await phantomSolana.signAllTransactions(transactions);
+          debug("All transactions signed successfully");
+          return signedTxs;
+        }
+      };
+      
+      // Extra validation to ensure we have signing methods
+      if (!wallet.publicKey) {
+        debug("No public key available");
+        throw new Error("No wallet public key available. Please reconnect your wallet.");
+      }
+      
+      debug("Starting event minting process with wallet:", wallet.publicKey.toString());
+      
+      // Mint the event on Solana
+      const { event, signature } = await mintEvent(
+        formData, 
+        wallet,
+        userProfile?.username || 'Anonymous' // Add fallback in case userProfile is null
+      );
+      
+      debug("Minting successful", { eventId: event.id, signature });
+      
+      // Store transaction signature
+      setTxSignature(signature);
+      
       // Add the event to global state
-      addEvent(newEvent)
+      await addEvent(event);
+      
+      // Show success message
+      toast({
+        title: "Event created successfully!",
+        description: "Your event has been minted on Solana Devnet",
+        variant: "default"
+      });
+      
+      // Redirect to the event market with a delay to allow toast to be visible
+      setTimeout(() => {
+        router.push("/event-market");
+      }, 2000);
+    } catch (error) {
+      debug("Error minting event", error);
+      toast({
+        title: "Error creating event",
+        description: error instanceof Error ? error.message : "Failed to mint your event. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      // Show success message and redirect
-      alert("Event created successfully!")
-      router.push("/event-market")
+  // Add a direct connect helper function
+  const connectWalletDirectly = async () => {
+    debug("Connecting wallet directly");
+    try {
+      if (window.phantom?.solana) {
+        debug("Phantom wallet found, connecting...");
+        const resp = await window.phantom.solana.connect();
+        debug("Direct connection successful", resp.publicKey.toString());
+        toast({
+          title: "Wallet connected",
+          description: "Your wallet is now connected. Try minting again.",
+          variant: "default"
+        });
+        // Reload page to ensure wallet state is updated properly
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        debug("Phantom wallet not found");
+        toast({
+          title: "Wallet not found",
+          description: "Please install Phantom wallet and refresh the page.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      debug("Direct connection error", error);
+      toast({
+        title: "Connection failed",
+        description: "Could not connect to wallet. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Add this test function that bypasses our complex integration and directly tests Phantom
+  const testWalletDirectly = async () => {
+    debug("Testing wallet directly with simple transaction");
+    
+    try {
+      if (!window.phantom?.solana) {
+        debug("Phantom not detected");
+        toast({
+          title: "Phantom not detected",
+          description: "Please install Phantom wallet extension",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // First make sure we're connected
+      if (!window.phantom.solana.isConnected) {
+        debug("Connecting to Phantom directly");
+        await window.phantom.solana.connect();
+      }
+      
+      const phantomWallet = window.phantom.solana;
+      debug("Phantom wallet state", {
+        isConnected: phantomWallet.isConnected,
+        publicKey: phantomWallet.publicKey?.toString(),
+        isPhantom: phantomWallet.isPhantom,
+        hasSignTransaction: !!phantomWallet.signTransaction
+      });
+      
+      // Create a simple test transaction (very small SOL transfer to self)
+      const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+      
+      if (!phantomWallet.publicKey) {
+        throw new Error("No public key available");
+      }
+      
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: phantomWallet.publicKey,
+          toPubkey: phantomWallet.publicKey,
+          lamports: 100, // Very small amount
+        })
+      );
+      
+      // Get a recent blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = phantomWallet.publicKey;
+      
+      debug("Transaction created, requesting signature");
+      
+      // Sign the transaction
+      const signedTransaction = await phantomWallet.signTransaction(transaction);
+      debug("Transaction signed successfully", signedTransaction);
+      
+      // This toast indicates success - if you see this, wallet interaction works
+      toast({
+        title: "Wallet interaction successful!",
+        description: "Phantom wallet responded correctly to signature request",
+        variant: "default"
+      });
+      
+    } catch (error) {
+      debug("Direct wallet test failed", error);
+      toast({
+        title: "Wallet test failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleNext = () => {
+    console.log("Next button clicked, current step:", step);
+    
+    if (step === "details") {
+      if (!formData.title) {
+        toast({
+          title: "Title required",
+          description: "Please enter a title for your event",
+          variant: "destructive"
+        });
+        return;
+      }
+      setStep("category");
+    }
+    else if (step === "category") {
+      if (!formData.category) {
+        toast({
+          title: "Category required",
+          description: "Please select a category for your event",
+          variant: "destructive"
+        });
+        return;
+      }
+      setStep("format");
+    }
+    else if (step === "format") {
+      if (!formData.date) {
+        toast({
+          title: "Date required",
+          description: "Please select a date for your event",
+          variant: "destructive"
+        });
+        return;
+      }
+      setStep("sales");
+    }
+    else if (step === "sales") setStep("mint");
+    else if (step === "mint") {
+      console.log("Calling handleMintEvent from Next button");
+      handleMintEvent();
     }
   }
 
@@ -511,16 +782,82 @@ export default function EventFactory() {
               <div className="border rounded-lg p-8 text-center">
                 <h3 className="text-2xl mb-4">Ready to Mint Your Event</h3>
                 <p className="text-muted-foreground mb-6">
-                  Your event details are complete. Click the button below to mint your event NFT and make it available
+                  Your event details are complete. Click the button below to mint your event NFT on Solana Devnet and make it available
                   in the marketplace.
                 </p>
-                <Button
-                  size="lg"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  onClick={handleNext}
-                >
-                  Mint Event NFT
-                </Button>
+                {isLoading ? (
+                  <div className="flex flex-col items-center py-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mb-4"></div>
+                    <p>Creating your event on Solana...</p>
+                  </div>
+                ) : txSignature ? (
+                  <div className="mb-6">
+                    <p className="text-green-600 mb-2">Event successfully minted!</p>
+                    <div className="font-mono text-xs bg-muted p-2 rounded truncate">
+                      Tx: {txSignature}
+                    </div>
+                    <a 
+                      href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary text-sm hover:underline mt-2 inline-block"
+                    >
+                      View on Solana Explorer
+                    </a>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <Button
+                      size="lg"
+                      className="bg-primary text-primary-foreground hover:bg-primary/90"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        debug("Mint button clicked directly");
+                        try {
+                          // Force the focus to be removed from the button
+                          (document.activeElement as HTMLElement)?.blur();
+                          
+                          // Add a small delay to ensure UI events have finished processing
+                          setTimeout(() => {
+                            handleMintEvent();
+                          }, 100);
+                        } catch (error) {
+                          debug("Error in mint button click handler", error);
+                        }
+                      }}
+                    >
+                      Mint Event NFT
+                    </Button>
+                    
+                    {(!publicKey || !connected) && (
+                      <div className="mt-4">
+                        <p className="text-amber-500 mb-2">Wallet not connected!</p>
+                        <Button 
+                          variant="outline" 
+                          onClick={connectWalletDirectly}
+                          className="w-full mb-2"
+                        >
+                          Connect Phantom Wallet
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Add test wallet button */}
+                    <div className="mt-4">
+                      <Button 
+                        variant="outline" 
+                        onClick={testWalletDirectly}
+                        className="w-full"
+                      >
+                        Test Wallet Interaction
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Try this to verify basic wallet functionality
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="border rounded-lg p-6">
@@ -561,6 +898,19 @@ export default function EventFactory() {
                     <span>{formData.ticketPrice} SOL</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="border rounded-lg p-6 text-muted-foreground text-sm">
+                <h4 className="font-medium mb-4 text-foreground">Technical Details</h4>
+                <p className="mb-2">This process will:</p>
+                <ol className="list-decimal list-inside space-y-1 mb-3">
+                  <li>Upload event metadata to IPFS via Pinata</li>
+                  <li>Create a Realtime Asset (RTA) on Solana Devnet</li>
+                  <li>Store event details in the program's on-chain data</li>
+                  <li>Enable tipping during the event livestream</li>
+                  <li>Set up claiming of the RTA based on the reserve price</li>
+                </ol>
+                <p>All transactions happen on Solana Devnet using test SOL.</p>
               </div>
             </div>
           </div>
