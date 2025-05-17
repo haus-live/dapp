@@ -1,14 +1,13 @@
 import { Haus } from "./haus";
 import idl from "./haus-idl.json";
 import * as anchor from "@coral-xyz/anchor";
+import { IdlTypes } from "@coral-xyz/anchor";
 import { Connection } from "@solana/web3.js";
-import { Program } from "@coral-xyz/anchor";
-import { Keypair, PublicKey } from "@solana/web3.js";
-import { ArtCategory, ArtCategoryVariant } from "../art-category";
+import { Keypair } from "@solana/web3.js";
 import type { WalletContextState } from "@solana/wallet-adapter-react"
 import BN from "bn.js";
 
-const HAUS_PROGRAM_ID = "8SjSBampBM2asLdQeJoAZpxJxpcbBEGG5q9ADRCAFxr5";
+const HAUS_PROGRAM_ID = "GZtbVznhmHTqn6PbiSN6PdJNPBboMW5gkCYszq9caNQ1";
 const CHUNK_UPLOADER_PUBKEY = "Aiv3M1rtPqMDMYUhbWFTjNWZWLcYqqrKghz9nL8Qq9Ut";  // V2
 const SOLANA_PUBLIC_RPC = "https://solana-devnet.g.alchemy.com/v2/hQ3pyvJGx66ieRT9hyuPNA0o2e17yWCK"; // "https://api.devnet.solana.com"
 
@@ -19,11 +18,10 @@ export async function createEvent(wallet: WalletContextState, args: {
     endTimestamp: number,
     reservePrice: number,
     ticketColletion: String,
-    artCategory: ArtCategoryVariant,
+    artCategory: number,
 }): Promise<any> {
-
     const connection = new Connection(SOLANA_PUBLIC_RPC, 'confirmed');
-
+    
     const provider = new anchor.AnchorProvider(
         connection,
         {
@@ -33,9 +31,20 @@ export async function createEvent(wallet: WalletContextState, args: {
         },
         { commitment: "confirmed" },
     )
-
+    
     const hausProgram = new anchor.Program<Haus>(idl as Haus, provider);  // maybe add provider options
+    type ArtCategoryEnum = IdlTypes<Haus>['artCategory'];
 
+    const artCategoryChoices = [
+        { standupComedy: {} },
+        { performanceArt: {} },
+        { poetrySlam: {} },
+        { openMicImprov: {} },
+        { livePainting: {} },
+        { creatingWorkshop: {} }
+    ];
+    const artCategory: ArtCategoryEnum = artCategoryChoices.at(args.artCategory) as ArtCategoryEnum;
+    
     const realtimeAsset = new Keypair();
 
     const createEventArgs = {
@@ -45,7 +54,7 @@ export async function createEvent(wallet: WalletContextState, args: {
       endTimestamp: new BN(args.endTimestamp),
       reservePrice: new BN(args.reservePrice),
       ticketCollection: provider.wallet.publicKey,
-      artCategory: args.artCategory,
+      artCategory: artCategory,
       chunkUploader: new anchor.web3.PublicKey(CHUNK_UPLOADER_PUBKEY),
     };
 
