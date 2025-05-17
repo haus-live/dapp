@@ -1,0 +1,80 @@
+import { Haus } from "./haus";
+import idl from "./haus-idl.json";
+import * as anchor from "@coral-xyz/anchor";
+import { Connection } from "@solana/web3.js";
+import { Program } from "@coral-xyz/anchor";
+import { Keypair, PublicKey } from "@solana/web3.js";
+import { ArtCategory, ArtCategoryVariant } from "../art-category";
+import type { WalletContextState } from "@solana/wallet-adapter-react"
+import BN from "bn.js";
+
+const HAUS_PROGRAM_ID = "8SjSBampBM2asLdQeJoAZpxJxpcbBEGG5q9ADRCAFxr5";
+const CHUNK_UPLOADER_PUBKEY = "Aiv3M1rtPqMDMYUhbWFTjNWZWLcYqqrKghz9nL8Qq9Ut";  // V2
+const SOLANA_PUBLIC_RPC = "https://solana-devnet.g.alchemy.com/v2/hQ3pyvJGx66ieRT9hyuPNA0o2e17yWCK"; // "https://api.devnet.solana.com"
+
+export async function createEvent(wallet: WalletContextState, args: {
+    name: string,
+    uri: string,
+    beginTimestamp: number,
+    endTimestamp: number,
+    reservePrice: number,
+    ticketColletion: String,
+    artCategory: ArtCategoryVariant,
+}): Promise<any> {
+
+    const connection = new Connection(SOLANA_PUBLIC_RPC, 'confirmed');
+
+    const provider = new anchor.AnchorProvider(
+        connection,
+        {
+            publicKey: wallet.publicKey!,
+            signTransaction: wallet.signTransaction!,
+            signAllTransactions: wallet.signAllTransactions!,
+        },
+        { commitment: "confirmed" },
+    )
+
+    const hausProgram = new anchor.Program<Haus>(idl as Haus, provider);  // maybe add provider options
+
+    const realtimeAsset = new Keypair();
+
+    const createEventArgs = {
+      name: args.name,
+      uri: args.uri,
+      beginTimestamp: new BN(args.beginTimestamp),
+      endTimestamp: new BN(args.endTimestamp),
+      reservePrice: new BN(args.reservePrice),
+      ticketCollection: provider.wallet.publicKey,
+      artCategory: args.artCategory,
+      chunkUploader: new anchor.web3.PublicKey(CHUNK_UPLOADER_PUBKEY),
+    };
+
+    let eventSeeds = [
+      Buffer.from(anchor.utils.bytes.utf8.encode("event")),
+      realtimeAsset.publicKey.toBuffer(),
+    ];
+    const [eventPubkey, _] = anchor.web3.PublicKey.findProgramAddressSync(
+      eventSeeds,
+      new anchor.web3.PublicKey(HAUS_PROGRAM_ID)
+    );
+
+    try {
+        const tx = await hausProgram.methods
+            .createEvent(createEventArgs)
+            .accountsPartial({
+                realtimeAsset: realtimeAsset.publicKey,
+                authority: provider.wallet.publicKey,
+                event: eventPubkey
+            })
+            .signers([realtimeAsset])
+            .transaction();
+        
+        tx.feePayer = provider.wallet.publicKey;
+        tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+        const signedTx = await provider.wallet.signTransaction(tx);
+        const txId = await connection.sendRawTransaction(signedTx.serialize());
+        await provider.connection.confirmTransaction(txId, 'confirmed');
+    } catch (e) {
+        console.error(e);
+    }
+}
