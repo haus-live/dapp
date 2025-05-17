@@ -64,3 +64,6 @@ env.md
 lib/env.ts
 lib/env.ts
 lib/env.ts
+
+# gitignore for now
+pnpm-lock.yaml
