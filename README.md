@@ -2,6 +2,127 @@
 
 HAUS is a decentralized application for live event ticketing and streaming built on Solana.
 
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/en/) v16.0.0 or higher
+- [npm](https://www.npmjs.com/), [yarn](https://yarnpkg.com/), or [pnpm](https://pnpm.io/) package manager
+- [Git](https://git-scm.com/)
+- [Phantom](https://phantom.app/) or another Solana wallet extension for your browser
+
+### Clone the Repository
+
+```bash
+# Clone the repository
+git clone https://github.com/haus-live/dapp.git
+
+# Navigate to the project directory
+cd dapp/haus-dapp
+```
+
+### Install Dependencies
+
+```bash
+# Using npm
+npm install
+
+# OR using yarn
+yarn install
+
+# OR using pnpm (recommended)
+pnpm install
+```
+
+### Environment Setup
+
+1. Create a new `env.ts` file in the `lib` directory:
+
+```bash
+# Create env.ts file in the lib directory
+touch lib/env.ts
+```
+
+2. Add the following content to the `lib/env.ts` file:
+
+```typescript
+/**
+ * Environment variables for the application
+ * Provides centralized access to configuration values
+ */
+
+// Solana RPC URL - using environment variable with fallback
+export const SOLANA_RPC_URL = process.env.NEXT_PUBLIC_ALCHEMY_RPC || 'https://solana-devnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY';
+
+// Solana program ID - using environment variable with fallback
+export const SOLANA_PROGRAM_ID = 'GZtbVznhmHTqn6PbiSN6PdJNPBboMW5gkCYszq9caNQ1';
+
+// Pinata IPFS gateway URL for content retrieval
+export const PINATA_GATEWAY_URL = `https://${process.env.NEXT_PUBLIC_PINATA_URL || 'YOUR_PINATA_URL'}/ipfs`;
+
+// Pinata API credentials for IPFS uploads
+export const PINATA_API_KEY = process.env.NEXT_PUBLIC_PINATA_API_KEY || 'YOUR_PINATA_API_KEY';
+export const PINATA_API_SECRET = process.env.NEXT_PUBLIC_PINATA_API_SECRET || 'YOUR_PINATA_API_SECRET';
+
+// Pinata JWT for authentication (optional, used when available)
+export const PINATA_JWT = process.env.NEXT_PUBLIC_PINATA_JWT || 'YOUR_PINATA_JWT';
+
+// Export all environment variables for easier imports
+export const ENV = {
+  SOLANA_RPC_URL,
+  SOLANA_PROGRAM_ID,
+  PINATA_GATEWAY_URL,
+  PINATA_API_KEY,
+  PINATA_API_SECRET,
+  PINATA_JWT
+};
+```
+
+3. Replace the placeholder values with your actual API keys and credentials:
+   - Get a free Alchemy API key from [Alchemy](https://www.alchemy.com/)
+   - Get Pinata API credentials from [Pinata](https://www.pinata.cloud/)
+
+### Running the Development Server
+
+```bash
+# Using npm
+npm run dev
+
+# OR using yarn
+yarn dev
+
+# OR using pnpm
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+### Building for Production
+
+```bash
+# Using npm
+npm run build
+
+# OR using yarn
+yarn build
+
+# OR using pnpm
+pnpm build
+```
+
+To start the production server:
+
+```bash
+# Using npm
+npm run start
+
+# OR using yarn
+yarn start
+
+# OR using pnpm
+pnpm start
+```
+
 ## Codebase Improvements
 
 We've consolidated the Solana-related functionality to improve maintainability and reduce duplication:
@@ -15,20 +136,6 @@ We've consolidated the Solana-related functionality to improve maintainability a
   - PDA (Program Derived Address) derivation
 
 This consolidation removes redundancy, improves consistency, and makes the codebase more maintainable.
-
-## Setup
-
-To run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 ## Environmental Variables
 
@@ -111,40 +218,6 @@ The ticket collection system uses Metaplex Core Candy Machine for robust ticketi
 
 #### Error Resolution
 If you encounter the error `Cannot read properties of undefined (reading 'size')`, it's likely related to the IDL account definitions. The solution is in `program-client.ts` where we ensure all accounts have a proper size property.
-
-## Setup and Development
-
-### Requirements
-- Node.js (v16+)
-- pnpm or yarn
-- A Solana wallet (Phantom recommended)
-
-### Installation
-```bash
-pnpm install
-# or
-yarn install
-```
-
-### Environment Setup
-Copy the example environment file and update it with your values:
-```bash
-cp env.example.ts env.ts
-```
-
-### Development Server
-```bash
-pnpm dev
-# or
-yarn dev
-```
-
-### Building for Production
-```bash
-pnpm build
-# or
-yarn build
-```
 
 ## License
 [MIT License](LICENSE) 
