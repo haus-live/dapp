@@ -19,6 +19,8 @@ import { HAUS_IDL } from './idl';
 import { storeJsonOnPinata, storeFileOnPinata } from '../../services/pinata-service';
 import { prepareEventMetadata } from '../event-metadata';
 
+import { createEventDirectlyAdapter } from './instructions/create-event';
+
 // Core Metaplex program ID
 const MPL_CORE_PROGRAM = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 
@@ -957,10 +959,16 @@ export async function mintEvent(
     
     // 11. Create the event directly using the manual transaction builder
     debug('minter', 'Creating event using direct transaction method');
-    const signature = await createEventDirectly(
+    // const signature = await createEventDirectly(
+    //   connection,
+    //   wallet,
+    //   program,
+    //   realtimeAsset,
+    //   eventParams
+    // );
+    const signature = await createEventDirectlyAdapter(
       connection,
       wallet,
-      program,
       realtimeAsset,
       eventParams
     );

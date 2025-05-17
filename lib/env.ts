@@ -7,7 +7,8 @@
 export const SOLANA_RPC_URL = process.env.NEXT_PUBLIC_ALCHEMY_RPC || 'https://solana-devnet.g.alchemy.com/v2/hQ3pyvJGx66ieRT9hyuPNA0o2e17yWCK';
 
 // Solana program ID - using environment variable with fallback
-export const SOLANA_PROGRAM_ID = process.env.NEXT_PUBLIC_PROGRAM_ID || '8SjSBampBM2asLdQeJoAZpxJxpcbBEGG5q9ADRCAFxr5';
+// export const SOLANA_PROGRAM_ID = process.env.NEXT_PUBLIC_PROGRAM_ID || 'GZtbVznhmHTqn6PbiSN6PdJNPBboMW5gkCYszq9caNQ1';
+export const SOLANA_PROGRAM_ID = 'GZtbVznhmHTqn6PbiSN6PdJNPBboMW5gkCYszq9caNQ1';
 
 // Pinata IPFS gateway URL for content retrieval
 export const PINATA_GATEWAY_URL = `https://${process.env.NEXT_PUBLIC_PINATA_URL || 'gray-random-lamprey-785.mypinata.cloud'}/ipfs`;
