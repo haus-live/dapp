@@ -48,6 +48,7 @@ export interface Event {
   image: string
   status: "created" | "live" | "completed" | "finalized"
   contentUri: string
+  ticketCollection?: string // Solana address of the ticket collection (Candy Machine)
 }
 
 export type EventCategory = 

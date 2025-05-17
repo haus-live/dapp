@@ -1,9 +1,7 @@
-import { Connection, PublicKey } from "@solana/web3.js"
-import { Program, AnchorProvider, web3, BN } from "@project-serum/anchor"
-import { eventFactoryIdl } from "../lib/solana/idl"
-import { ticketFactoryIdl } from "../lib/solana/idl"
-import { CONTRACT_ADDRESSES } from "../lib/constants"
-import { SOLANA_RPC_URL, SOLANA_PROGRAM_ID } from "../lib/env"
+import { Connection, PublicKey } from "@solana/web3.js";
+import { web3 } from "@project-serum/anchor";
+import { SOLANA_RPC_URL, SOLANA_PROGRAM_ID } from "../lib/env";
+import { createAnchorProvider, createHausProgram, getEventPDA } from "../lib/solana/anchor-utils";
 
 // Set up program ID and RPC from centralized environment variables
 const programId = new PublicKey(SOLANA_PROGRAM_ID);
@@ -21,20 +19,21 @@ export async function fetchEvent(eventId: string): Promise<any> {
     // Connect to Solana
     const connection = new Connection(rpcEndpoint);
 
-    // Create a read-only provider
-    const provider = AnchorProvider.local(rpcEndpoint);
-
+    // Create a read-only provider - using empty wallet for read-only operations
+    const readOnlyWallet = {
+      publicKey: new PublicKey(eventId),
+      signTransaction: async (tx: any) => tx,
+      signAllTransactions: async (txs: any[]) => txs
+    };
+    
+    const provider = createAnchorProvider(connection, readOnlyWallet);
     console.log("Creating program instance with ID:", programId.toString());
     
-    // Create program instance
-    const program = new Program(eventFactoryIdl as any, programId, provider);
+    // Create program instance using our utility
+    const program = createHausProgram(provider);
 
     // Find the event PDA
-    const [eventPda] = await PublicKey.findProgramAddress(
-      [Buffer.from("event"), new PublicKey(eventId).toBuffer()],
-      program.programId,
-    );
-    
+    const eventPda = await getEventPDA(programId, new PublicKey(eventId));
     console.log("Event PDA:", eventPda.toString());
 
     // Fetch the event account
@@ -62,8 +61,8 @@ export async function fetchEvent(eventId: string): Promise<any> {
       contentUri: eventData.uri || "",
     }
   } catch (error) {
-    console.error("Error fetching event:", error)
-    throw error
+    console.error("Error fetching event:", error);
+    throw error;
   }
 }
 
@@ -80,26 +79,51 @@ export async function verifyTicket(eventId: string, userPublicKey: string): Prom
     // Connect to Solana
     const connection = new Connection(rpcEndpoint);
 
-    // Create a read-only provider
-    const provider = AnchorProvider.local(rpcEndpoint);
-
-    // Create program instance
-    const program = new Program(ticketFactoryIdl as any, programId, provider);
+    // Create a read-only provider - using empty wallet for read-only operations
+    const readOnlyWallet = {
+      publicKey: new PublicKey(eventId),
+      signTransaction: async (tx: any) => tx,
+      signAllTransactions: async (txs: any[]) => txs
+    };
+    
+    const provider = createAnchorProvider(connection, readOnlyWallet);
+    
+    // Create program instance using our utility
+    const program = createHausProgram(provider);
 
     // Find the event PDA
-    const [eventPda] = await PublicKey.findProgramAddress(
-      [Buffer.from("event"), new PublicKey(eventId).toBuffer()],
-      program.programId,
-    );
+    const eventPda = await getEventPDA(programId, new PublicKey(eventId));
     
-    // This is a simplified implementation since the actual ticketing
-    // would require querying token accounts or NFT ownership
-    console.log("This is a mock implementation - will return false");
+    // Get the ticket collection from the event
+    const eventAccount = await program.account.event.fetch(eventPda);
+    const ticketCollection = (eventAccount as any).ticketCollection;
     
-    return false; // Mock implementation
+    if (!ticketCollection) {
+      console.log("No ticket collection found for this event");
+      return false;
+    }
+    
+    console.log("Checking if user owns a ticket NFT from collection:", ticketCollection.toString());
+    
+    // Implementation using Solana to check token ownership
+    const userWallet = new PublicKey(userPublicKey);
+    
+    try {
+      // Query token accounts owned by the user that belong to this collection
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        userWallet,
+        { mint: ticketCollection }
+      );
+      
+      // If user has token accounts for this mint, they have a ticket
+      return tokenAccounts.value.length > 0;
+    } catch (err) {
+      console.error("Error checking ticket ownership:", err);
+      return false;
+    }
   } catch (error) {
-    console.error("Error verifying ticket:", error)
-    return false
+    console.error("Error verifying ticket:", error);
+    return false;
   }
 }
 
@@ -117,35 +141,39 @@ export async function updateEventContent(eventId: string, contentUri: string): P
     const provider = getProvider(connection);
     if (!provider) throw new Error("Wallet not connected");
 
-    // Create program instance
-    const program = new Program(eventFactoryIdl as any, programId, provider);
+    // Create program instance using our utility
+    const program = createHausProgram(provider);
 
     // Find the event PDA
-    const [eventPda] = await PublicKey.findProgramAddress(
-      [Buffer.from("event"), new PublicKey(eventId).toBuffer()],
-      program.programId,
-    );
-    
+    const eventPda = await getEventPDA(programId, new PublicKey(eventId));
     console.log("Event PDA:", eventPda.toString());
     
-    console.log("This is a mock implementation since the actual updateContent instruction isn't yet implemented");
+    // Update content URI instruction
+    const tx = await program.methods
+      .updateContentUri(contentUri)
+      .accounts({
+        event: eventPda,
+        authority: provider.wallet.publicKey,
+      })
+      .rpc();
     
-    // Mock transaction signature 
-    return "mock_transaction_signature";
+    console.log("Content URI updated with transaction:", tx);
+    
+    // Return the actual transaction signature
+    return tx;
   } catch (error) {
-    console.error("Error updating event content:", error)
-    throw new Error("Failed to update event content")
+    console.error("Error updating event content:", error);
+    throw new Error("Failed to update event content");
   }
 }
 
 /**
  * Helper function to get the provider from the wallet adapter
  */
-function getProvider(connection: Connection): AnchorProvider | null {
+function getProvider(connection: Connection): any {
   // This would normally come from your wallet adapter
-  // For simplicity, we're creating a mock provider
   if (typeof window === "undefined" || !window.solana) {
-    return null
+    return null;
   }
 
   // Create a provider that wraps the wallet
@@ -153,9 +181,9 @@ function getProvider(connection: Connection): AnchorProvider | null {
     publicKey: window.solana.publicKey,
     signTransaction: window.solana.signTransaction,
     signAllTransactions: window.solana.signAllTransactions,
-  }
+  };
 
-  return new AnchorProvider(connection, wallet as any, { commitment: "processed" })
+  return createAnchorProvider(connection, wallet);
 }
 
 /**
@@ -163,13 +191,13 @@ function getProvider(connection: Connection): AnchorProvider | null {
  */
 function getEventStatus(status: any): string {
   // Default logic based on expected status structure
-  if (status?.created) return "created"
-  if (status?.live) return "live"
-  if (status?.completed) return "completed"
-  if (status?.finalized) return "finalized"
+  if (status?.created) return "created";
+  if (status?.live) return "live";
+  if (status?.completed) return "completed";
+  if (status?.finalized) return "finalized";
   
   // Default value if we can't determine the status
-  return "created"
+  return "created";
 }
 
 /**
@@ -177,13 +205,13 @@ function getEventStatus(status: any): string {
  */
 function getEventCategory(artCategory: any): string {
   // Check each possible enum variant
-  if (artCategory?.standupComedy) return "standup-comedy"
-  if (artCategory?.performanceArt) return "performance-art"
-  if (artCategory?.poetrySlam) return "poetry-slam" 
-  if (artCategory?.openMicImprov) return "open-mic"
-  if (artCategory?.livePainting) return "live-painting"
-  if (artCategory?.creatingWorkshop) return "creative-workshop"
+  if (artCategory?.standupComedy) return "standup-comedy";
+  if (artCategory?.performanceArt) return "performance-art";
+  if (artCategory?.poetrySlam) return "poetry-slam"; 
+  if (artCategory?.openMicImprov) return "open-mic";
+  if (artCategory?.livePainting) return "live-painting";
+  if (artCategory?.creatingWorkshop) return "creative-workshop";
   
   // Default value if we can't determine the category
-  return "performance-art"
+  return "performance-art";
 }

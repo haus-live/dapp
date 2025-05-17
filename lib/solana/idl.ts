@@ -1,368 +1,162 @@
 /**
- * Haus Solana program IDL
- * Auto-generated from anchor build
+ * IDL definition for the HAUS program
+ * This should match the actual on-chain program structure
  */
 
 export const HAUS_IDL = {
-  "address": "8SjSBampBM2asLdQeJoAZpxJxpcbBEGG5q9ADRCAFxr5",
-  "metadata": {
-    "name": "haus",
-    "version": "0.1.0",
-    "spec": "0.1.0",
-    "description": "Created with Anchor"
-  },
+  "version": "0.1.0",
+  "name": "haus",
   "instructions": [
     {
-      "name": "claim_realtime_asset",
-      "discriminator": [
-        73,
-        231,
-        9,
-        170,
-        19,
-        44,
-        21,
-        43
-      ],
+      "name": "createEvent",
       "accounts": [
         {
-          "name": "event",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  118,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "realtime_asset"
-              }
-            ]
-          }
-        },
-        {
-          "name": "realtime_asset",
-          "writable": true
+          "name": "realtimeAsset",
+          "isMut": true,
+          "isSigner": true
         },
         {
           "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "create_event",
-      "discriminator": [
-        49,
-        219,
-        29,
-        203,
-        22,
-        98,
-        100,
-        87
-      ],
-      "accounts": [
-        {
-          "name": "realtime_asset",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
+          "isMut": true,
+          "isSigner": true
         },
         {
           "name": "event",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  118,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "realtime_asset"
-              }
-            ]
-          }
+          "isMut": true,
+          "isSigner": false
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
         },
         {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+          "name": "mplCoreProgram",
+          "isMut": false,
+          "isSigner": false
         }
       ],
       "args": [
         {
-          "name": "args",
+          "name": "params",
           "type": {
-            "defined": {
-              "name": "CreateEventArgs"
-            }
+            "defined": "CreateEventParams"
           }
         }
       ]
     },
     {
-      "name": "init_tipping_calculator",
-      "discriminator": [
-        117,
-        30,
-        89,
-        81,
-        237,
-        6,
-        85,
-        111
-      ],
+      "name": "initTippingCalculator",
       "accounts": [
         {
-          "name": "realtime_asset"
+          "name": "realtimeAsset",
+          "isMut": false,
+          "isSigner": false
         },
         {
           "name": "event",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  118,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "realtime_asset"
-              }
-            ]
-          }
+          "isMut": false,
+          "isSigner": false
         },
         {
-          "name": "tipping_calculator",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  105,
-                  112,
-                  112,
-                  105,
-                  110,
-                  103,
-                  95,
-                  99,
-                  97,
-                  108,
-                  99,
-                  117,
-                  108,
-                  97,
-                  116,
-                  111,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "realtime_asset"
-              },
-              {
-                "kind": "account",
-                "path": "signer"
-              }
-            ]
-          }
+          "name": "tippingCalculator",
+          "isMut": true,
+          "isSigner": false
         },
         {
           "name": "signer",
-          "writable": true,
-          "signer": true
+          "isMut": true,
+          "isSigner": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
         }
       ],
       "args": []
     },
     {
-      "name": "make_tip",
-      "discriminator": [
-        163,
-        150,
-        8,
-        178,
-        66,
-        148,
-        50,
-        99
-      ],
+      "name": "makeTip",
       "accounts": [
         {
           "name": "event",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  118,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "ix.realtime_asset_key"
-              }
-            ]
-          }
+          "isMut": true,
+          "isSigner": false
         },
         {
-          "name": "tipping_calculator",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  105,
-                  112,
-                  112,
-                  105,
-                  110,
-                  103,
-                  95,
-                  99,
-                  97,
-                  108,
-                  99,
-                  117,
-                  108,
-                  97,
-                  116,
-                  111,
-                  114
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "ix.realtime_asset_key"
-              },
-              {
-                "kind": "account",
-                "path": "tipping_calculator.authority",
-                "account": "TippingCalculator"
-              }
-            ]
-          }
+          "name": "tippingCalculator",
+          "isMut": true,
+          "isSigner": false
         },
         {
           "name": "signer",
-          "writable": true,
-          "signer": true
+          "isMut": true,
+          "isSigner": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "session_token",
-          "optional": true
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
         }
       ],
       "args": [
         {
-          "name": "args",
+          "name": "params",
           "type": {
-            "defined": {
-              "name": "MakeTipArgs"
-            }
+            "defined": "TipParams"
           }
         }
       ]
     },
     {
-      "name": "withdraw_tips",
-      "discriminator": [
-        107,
-        192,
-        228,
-        68,
-        165,
-        120,
-        164,
-        23
-      ],
+      "name": "claimRealtimeAsset",
       "accounts": [
         {
-          "name": "realtime_asset",
-          "writable": true
+          "name": "event",
+          "isMut": true,
+          "isSigner": false
         },
         {
-          "name": "event",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  118,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "realtime_asset"
-              }
-            ]
-          }
+          "name": "realtimeAsset",
+          "isMut": true,
+          "isSigner": false
         },
         {
           "name": "authority",
-          "writable": true,
-          "signer": true
+          "isMut": true,
+          "isSigner": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "name": "mplCoreProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdrawTips",
+      "accounts": [
+        {
+          "name": "realtimeAsset",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "event",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
         }
       ],
       "args": []
@@ -370,306 +164,121 @@ export const HAUS_IDL = {
   ],
   "accounts": [
     {
-      "name": "BaseAssetV1",
-      "discriminator": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "Event",
-      "discriminator": [
-        125,
-        192,
-        125,
-        158,
-        9,
-        115,
-        152,
-        233
-      ]
-    },
-    {
-      "name": "SessionToken",
-      "discriminator": [
-        233,
-        4,
-        115,
-        14,
-        46,
-        21,
-        1,
-        15
-      ]
-    },
-    {
-      "name": "TippingCalculator",
-      "discriminator": [
-        126,
-        214,
-        224,
-        73,
-        85,
-        136,
-        204,
-        88
-      ]
-    }
-  ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "InvalidOwner",
-      "msg": "Signer does not own the token account"
-    },
-    {
-      "code": 6001,
-      "name": "InvalidMint",
-      "msg": "Token account does not match mint"
-    },
-    {
-      "code": 6002,
-      "name": "InvalidAmount",
-      "msg": "Token account must hold exactly 1 token"
-    },
-    {
-      "code": 6003,
-      "name": "InvalidMetadataAccount",
-      "msg": "Invalid metadata account"
-    },
-    {
-      "code": 6004,
-      "name": "UnverifiedCollection",
-      "msg": "NFT collection is not verified"
-    },
-    {
-      "code": 6005,
-      "name": "InvalidCollection",
-      "msg": "NFT does not belong to the expected collection"
-    },
-    {
-      "code": 6006,
-      "name": "NoCollectionData",
-      "msg": "NFT has no collection data"
-    }
-  ],
-  "types": [
-    {
-      "name": "ArtCategory",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "StandupComedy"
-          },
-          {
-            "name": "PerformanceArt"
-          },
-          {
-            "name": "PoetrySlam"
-          },
-          {
-            "name": "OpenMicImprov"
-          },
-          {
-            "name": "LivePainting"
-          },
-          {
-            "name": "CreatingWorkshop"
-          }
-        ]
-      }
-    },
-    {
-      "name": "BaseAssetV1",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "key",
-            "type": {
-              "defined": {
-                "name": "Key"
-              }
-            }
-          },
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "update_authority",
-            "type": {
-              "defined": {
-                "name": "UpdateAuthority"
-              }
-            }
-          },
-          {
-            "name": "name",
-            "type": "string"
-          },
-          {
-            "name": "uri",
-            "type": "string"
-          },
-          {
-            "name": "seq",
-            "type": {
-              "option": "u64"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "CreateEventArgs",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "name",
-            "type": "string"
-          },
-          {
-            "name": "uri",
-            "type": "string"
-          },
-          {
-            "name": "begin_timestamp",
-            "type": "i64"
-          },
-          {
-            "name": "end_timestamp",
-            "type": "i64"
-          },
-          {
-            "name": "reserve_price",
-            "type": "u128"
-          },
-          {
-            "name": "ticket_collection",
-            "type": "pubkey"
-          },
-          {
-            "name": "art_category",
-            "type": {
-              "defined": {
-                "name": "ArtCategory"
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
       "name": "Event",
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "authority",
-            "type": "pubkey"
+            "type": "publicKey"
           },
           {
-            "name": "realtime_asset",
-            "docs": [
-              "The Real Time Asset (Metaplex Core) representing the event"
-            ],
-            "type": "pubkey"
+            "name": "realtimeAsset",
+            "type": "publicKey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          },
+          {
+            "name": "beginTimestamp",
+            "type": "i64"
+          },
+          {
+            "name": "endTimestamp",
+            "type": "i64"
+          },
+          {
+            "name": "reservePrice",
+            "type": "u64"
+          },
+          {
+            "name": "ticketCollection",
+            "type": "publicKey"
+          },
+          {
+            "name": "artCategory",
+            "type": "string"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "totalTips",
+            "type": "u64"
+          },
+          {
+            "name": "tipsClaimed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TippingCalculator",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tipper",
+            "type": "publicKey"
+          },
+          {
+            "name": "realtimeAsset",
+            "type": "publicKey"
+          },
+          {
+            "name": "totalAmount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "CreateEventParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
           },
           {
             "name": "begin_timestamp",
-            "docs": [
-              "Start time of the event"
-            ],
             "type": "i64"
           },
           {
             "name": "end_timestamp",
-            "docs": [
-              "End time of the event"
-            ],
             "type": "i64"
           },
           {
-            "name": "tipping_leader",
-            "docs": [
-              "The user with the highest total tipped amount"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "tipping_leader_total",
-            "docs": [
-              "The higher total tipped amount"
-            ],
-            "type": "u128"
-          },
-          {
             "name": "reserve_price",
-            "docs": [
-              "Minimum total tipped amount needed to claim the assets' ownership"
-            ],
-            "type": "u128"
+            "type": "u64"
           },
           {
             "name": "ticket_collection",
-            "docs": [
-              "Ticket collection (Metaplex Token Metadata)"
-            ],
-            "type": "pubkey"
+            "type": "publicKey"
           },
           {
             "name": "art_category",
-            "docs": [
-              "Event type (category)"
-            ],
-            "type": {
-              "defined": {
-                "name": "ArtCategory"
-              }
-            }
+            "type": "string"
           }
         ]
       }
     },
     {
-      "name": "Key",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Uninitialized"
-          },
-          {
-            "name": "AssetV1"
-          },
-          {
-            "name": "HashedAssetV1"
-          },
-          {
-            "name": "PluginHeaderV1"
-          },
-          {
-            "name": "PluginRegistryV1"
-          },
-          {
-            "name": "CollectionV1"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MakeTipArgs",
+      "name": "TipParams",
       "type": {
         "kind": "struct",
         "fields": [
@@ -679,86 +288,32 @@ export const HAUS_IDL = {
           },
           {
             "name": "realtime_asset_key",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "SessionToken",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "authority",
-            "type": "pubkey"
-          },
-          {
-            "name": "target_program",
-            "type": "pubkey"
-          },
-          {
-            "name": "session_signer",
-            "type": "pubkey"
-          },
-          {
-            "name": "valid_until",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "TippingCalculator",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "total_tipped_amount",
-            "docs": [
-              "Total tips made by the user"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "authority",
-            "docs": [
-              "Authority"
-            ],
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "UpdateAuthority",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "None"
-          },
-          {
-            "name": "Address",
-            "fields": [
-              "pubkey"
-            ]
-          },
-          {
-            "name": "Collection",
-            "fields": [
-              "pubkey"
-            ]
+            "type": "publicKey"
           }
         ]
       }
     }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidAuthority",
+      "msg": "Invalid authority"
+    },
+    {
+      "code": 6001,
+      "name": "EventNotOver",
+      "msg": "Event has not ended yet"
+    },
+    {
+      "code": 6002,
+      "name": "EventAlreadyClaimed",
+      "msg": "Event already claimed"
+    },
+    {
+      "code": 6003,
+      "name": "TipsAlreadyClaimed",
+      "msg": "Tips already claimed"
+    }
   ]
-}
-
-// Create additional IDL exports for event-factory and ticket-factory
-export const idl = HAUS_IDL;
-
-// Export individual IDLs for the imports that need them
-export { HAUS_IDL as eventFactoryIdl };
-export { HAUS_IDL as ticketFactoryIdl }; 
+};

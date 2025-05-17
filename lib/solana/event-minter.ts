@@ -1,207 +1,283 @@
-import { PublicKey, Keypair, Connection, clusterApiUrl } from '@solana/web3.js';
-import { BN } from '@coral-xyz/anchor';
-import { HausProgramClient } from './program-client';
-import { createConnection, createTemporaryKeypair } from './connection';
-import { idl as HAUS_IDL } from '@/idl/event-factory';
-import { prepareEventMetadata, createSolanaEventParams } from '../event-metadata';
-import { Event } from '../types';
-import { SOLANA_RPC_URL, SOLANA_PROGRAM_ID } from '../env';
+/**
+ * This implements event NFT minting using Solana and Metaplex */
 
-// Add debugging for the minter
+import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { HausProgramClient } from './program-client';
+import { createTicketCollection, createTicketCollectionMetadata } from './candy-machine';
+import { prepareEventMetadata, CreateEventParams } from '../event-metadata';
+import { SOLANA_RPC_URL } from '../env';
+import { ArtCategory } from './art-category';
+import { mapCategoryToVariant, numberToVariant } from './art-category';
+import { createEventDirectly } from './direct-transaction';
+import { createAnchorProvider, createHausProgram } from './anchor-utils';
+
+// Debug logging for event minting
 const debug = (message: string, data?: any) => {
-  console.log(`%c[MINTER] ${message}`, 'background: #003300; color: #ffff00', data || '');
+  console.log(`%c[MINTER] ${message}`, 'background: #003300; color: #88ff88', data || '');
 };
 
 /**
- * Create and mint a new event on Solana
- * @param formData Form data from the EventFactory 
- * @param wallet User's wallet (must implement AnchorWallet interface)
- * @param username User's username
- * @returns Object containing the created event and transaction signature
+ * Map UI category string to Solana program enum variant
+ * This function uses the corrected enum format required by the Solana program
+ */
+function getCategoryVariant(category: string): any {
+  // Use the imported function that returns a Borsh-compatible variant
+  return mapCategoryToVariant(category);
+}
+
+/**
+ * Mints an event NFT with ticket collection
+ * 
+ * @param wallet Connected user wallet
+ * @param formData Form data from the event creation flow
+ * @returns Transaction signature from blockchain
  */
 export async function mintEvent(
-  formData: any,
-  wallet: any,
-  username: string
-): Promise<{ event: Event, signature: string }> {
-  debug("mintEvent called");
-  
+  wallet: any, 
+  formData: any
+): Promise<{ transactionSignature: string; realtimeAssetKey: string }> {
   try {
-    debug("Wallet info", {
+    // 1. Validate wallet connection
+    if (!wallet || !wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+
+    // Log wallet info for debugging
+    debug('Wallet info', {
       hasPublicKey: !!wallet.publicKey,
       publicKeyStr: wallet.publicKey?.toString(),
       hasSignTransaction: !!wallet.signTransaction,
       hasSignAllTransactions: !!wallet.signAllTransactions
     });
-    
-    // Basic wallet validation
-    if (!wallet || !wallet.publicKey) {
-      throw new Error("Public key not found in wallet");
+
+    // 2. Create Solana connection with the production RPC URL
+    if (!SOLANA_RPC_URL) {
+      throw new Error('Solana RPC URL not configured in environment');
     }
     
-    // Add a more robust check for wallet methods and add phantom fallbacks if needed
-    if (!wallet.signTransaction) {
-      debug("signTransaction not found in provided wallet, checking for window.phantom");
-      const phantom = typeof window !== 'undefined' ? window.phantom : undefined;
-      const solana = phantom ? phantom.solana : undefined;
-      
-      if (solana && typeof solana.signTransaction === 'function') {
-        wallet.signTransaction = async (tx: any) => {
-          debug("Using phantom.solana.signTransaction");
-          return await solana.signTransaction(tx);
-        };
-      } else {
-        throw new Error("signTransaction method not available");
-      }
-    }
-    
-    if (!wallet.signAllTransactions) {
-      debug("signAllTransactions not found in provided wallet, checking for window.phantom");
-      const phantom = typeof window !== 'undefined' ? window.phantom : undefined;
-      const solana = phantom ? phantom.solana : undefined;
-      
-      if (solana && typeof solana.signAllTransactions === 'function') {
-        wallet.signAllTransactions = async (txs: any) => {
-          debug("Using phantom.solana.signAllTransactions");
-          return await solana.signAllTransactions(txs);
-        };
-      } else {
-        throw new Error("signAllTransactions method not available");
-      }
-    }
-    
-    // Get the RPC URL from centralized env variables
-    debug("Using RPC URL from env", SOLANA_RPC_URL);
-    
-    // Create a connection with the standardized URL
-    debug("Creating Solana connection");
+    debug('Using RPC URL from env', SOLANA_RPC_URL);
+    debug('Creating Solana connection');
     const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
-    
-    // Test connection with a simple request
+
+    // Verify connection
     try {
       const version = await connection.getVersion();
-      debug("Connected to Solana", version);
-    } catch (connError) {
-      debug("Error connecting to primary RPC, trying fallback");
-      // If that fails, try another endpoint as backup
-      const fallbackConn = new Connection(clusterApiUrl('devnet'), 'confirmed');
-      await fallbackConn.getVersion(); // Will throw if this one fails too
+      debug('Connected to Solana', version);
+    } catch (error) {
+      throw new Error(`Failed to connect to Solana: ${error.message}`);
+    }
+
+    // 3. Generate a completely random keypair for the realtime asset
+    // Create a fresh random keypair each time with proper entropy
+    const seedBytes = new Uint8Array(32);
+    window.crypto.getRandomValues(seedBytes);
+    
+    // Generate timestamp and add to first 8 bytes for uniqueness
+    const timestamp = Date.now();
+    for (let i = 0; i < 8; i++) {
+      seedBytes[i] ^= Number((timestamp >> (i * 8)) & 0xFF);
     }
     
-    // Generate a keypair for the realtime asset
-    const realtimeAsset = createTemporaryKeypair();
-    debug("Generated temporary keypair", realtimeAsset.publicKey.toString());
+    // Create keypair from this high-entropy seed
+    const realtimeAsset = Keypair.fromSeed(seedBytes);
     
-    // Prepare event metadata and upload to IPFS
-    debug("Preparing event metadata for IPFS...");
-    const { uri, metadata } = await prepareEventMetadata(formData, wallet.publicKey.toString(), username);
-    debug("Metadata uploaded to IPFS", uri);
+    debug('Generated high-entropy unique keypair', {
+      publicKey: realtimeAsset.publicKey.toString(),
+      timestamp: timestamp,
+      method: 'using secure random values with timestamp entropy'
+    });
+
+    // 4. Prepare event metadata
+    debug('Preparing event metadata for IPFS...');
+    if (!formData.banner || !(formData.banner instanceof File)) {
+      throw new Error('Banner image is required and must be a valid file');
+    }
     
-    // Create event parameters for the Solana program
-    debug("Creating Solana event parameters...");
-    const eventParams = createSolanaEventParams(formData, uri, wallet.publicKey);
+    try {
+      var { uri, metadata } = await prepareEventMetadata(formData, wallet.publicKey.toString());
+      debug('Metadata uploaded to IPFS', uri);
+    } catch (error) {
+      throw new Error(`Failed to prepare event metadata: ${error.message}`);
+    }
+
+    // 5. Create ticket collection using production Metaplex implementation
+    debug('Creating ticket collection for event...');
     
-    // Get the program ID from centralized env variables
-    debug("Using program ID:", SOLANA_PROGRAM_ID);
+    // Add timestamp and random value to name to ensure uniqueness
+    const collectionTimestamp = Date.now();
+    const randomId = Math.floor(Math.random() * 10000);
+    const uniqueCollectionName = `${metadata.title} Tickets #${collectionTimestamp}-${randomId}`;
     
-    // Initialize the program client
-    debug("Initializing program client");
-    const programClient = new HausProgramClient(
-      connection, 
-      wallet, 
-      HAUS_IDL,
-      new PublicKey(SOLANA_PROGRAM_ID)
+    // Validate ticket parameters
+    const ticketPrice = parseFloat(formData.ticketPrice) || 0.1;
+    const ticketsAmount = parseInt(formData.ticketsAmount) || 99;
+    
+    if (isNaN(ticketPrice) || ticketPrice < 0) {
+      throw new Error('Invalid ticket price');
+    }
+    
+    if (isNaN(ticketsAmount) || ticketsAmount < 1 || ticketsAmount > 10000) {
+      throw new Error('Invalid tickets amount (must be between 1 and 10000)');
+    }
+    
+    const ticketCollectionConfig = createTicketCollectionMetadata(
+      uniqueCollectionName,
+      metadata.description || '',
+      wallet.publicKey.toString(),
+      ticketsAmount,
+      ticketPrice,
+      metadata.bannerUrl
     );
     
-    // Call the Solana program to create the event
-    debug("Calling createEvent method on program client");
+    debug('Creating ticket collection with parameters', {
+      name: ticketCollectionConfig.name,
+      maxSupply: ticketCollectionConfig.maxSupply,
+      price: ticketCollectionConfig.price
+    });
     
-    // Add a short timeout to ensure the wallet UI has time to initialize
-    // Some browser wallets need this delay to properly display their UI
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    debug("About to sign transaction");
-    
-    // Perform the transaction with better timeout handling
-    let signature;
+    // Create the collection (triggers wallet signature)
     try {
-      // Set a timeout for the transaction to handle wallet UI not showing up
-      const transactionPromise = programClient.createEvent(realtimeAsset, eventParams);
+      var ticketCollectionKey = await createTicketCollection(
+        connection,
+        wallet,
+        ticketCollectionConfig
+      );
       
-      // Create a timeout promise
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Transaction signing timed out - wallet UI may not be showing")), 30000);
-      });
-      
-      // Race the transaction against the timeout
-      signature = await Promise.race([transactionPromise, timeoutPromise]) as string;
-      debug("Transaction signature received", signature);
-    } catch (txError) {
-      debug("Transaction error", txError);
-      
-      // Check if this is a phantom-specific error
-      if (txError instanceof Error) {
-        const errorMessage = txError.message.toLowerCase();
-        
-        if (errorMessage.includes("user rejected") || errorMessage.includes("cancelled")) {
-          throw new Error("Transaction rejected: You declined the transaction in your wallet.");
-        } else if (errorMessage.includes("timed out")) {
-          throw new Error("Transaction timed out: Please check if your wallet popup is showing or try refreshing the page.");
-        } else if (errorMessage.includes("disconnected port") || errorMessage.includes("contentscript")) {
-          throw new Error("Browser extension communication error: Please refresh the page and try again.");
-        }
-      }
-      
-      throw txError;
+      debug('Ticket collection created', ticketCollectionKey.toString());
+    } catch (error) {
+      throw new Error(`Failed to create ticket collection: ${error.message}`);
+    }
+
+    // 6. Get Borsh-compatible art category variant for Solana program
+    if (!metadata.category) {
+      metadata.category = 'performance-art'; // Default category
     }
     
-    // Create a new event object with the transaction data
-    const newEvent: Event = {
-      id: realtimeAsset.publicKey.toString(),
-      title: metadata.title,
-      creator: metadata.creator,
-      creatorAddress: metadata.creatorAddress,
-      category: metadata.category,
-      date: metadata.date,
-      duration: metadata.duration,
-      participants: 0,
-      maxParticipants: metadata.ticketsAmount,
-      ticketPrice: metadata.ticketPrice,
-      description: metadata.description,
-      image: metadata.bannerUrl || "/placeholder.svg?height=200&width=400",
-      status: "created",
-      contentUri: uri
+    const artCategoryVariant = mapCategoryToVariant(metadata.category);
+    
+    debug('Using Borsh-compatible art category variant', {
+      uiCategory: metadata.category,
+      variant: artCategoryVariant
+    });
+
+    // 7. Setup event params with the ticket collection public key
+    // Parse dates from metadata
+    if (!metadata.startDate || !(metadata.startDate instanceof Date)) {
+      metadata.startDate = new Date(Date.now() + 60000); // Default to 1 minute from now
+    }
+    
+    if (!metadata.endDate || !(metadata.endDate instanceof Date)) {
+      metadata.endDate = new Date(metadata.startDate.getTime() + 3600000); // Default to 1 hour after start
+    }
+    
+    // Ensure start date is in the future
+    if (metadata.startDate.getTime() < Date.now()) {
+      metadata.startDate = new Date(Date.now() + 60000); // Set to 1 minute from now
+    }
+    
+    // Ensure end date is after start date
+    if (metadata.endDate.getTime() <= metadata.startDate.getTime()) {
+      metadata.endDate = new Date(metadata.startDate.getTime() + 3600000); // 1 hour after start
+    }
+    
+    // Convert dates to UNIX timestamps in seconds
+    const beginTimestamp = Math.floor(metadata.startDate.getTime() / 1000);
+    const endTimestamp = Math.floor(metadata.endDate.getTime() / 1000);
+    
+    debug('Using event time range', {
+      beginTimestamp: new Date(beginTimestamp * 1000).toISOString(),
+      endTimestamp: new Date(endTimestamp * 1000).toISOString(),
+      durationSeconds: endTimestamp - beginTimestamp
+    });
+    
+    // Validate reserve price
+    const reservePrice = typeof formData.reservePrice === 'number' 
+      ? formData.reservePrice 
+      : parseFloat(formData.reservePrice || '0');
+      
+    if (isNaN(reservePrice) || reservePrice < 0) {
+      throw new Error('Invalid reserve price');
+    }
+    
+    // Convert reserve price to lamports
+    const reservePriceLamports = Math.floor(reservePrice * LAMPORTS_PER_SOL);
+    
+    const eventParams: CreateEventParams = {
+      name: metadata.title,
+      uri: uri,
+      beginTimestamp: beginTimestamp,
+      endTimestamp: endTimestamp,
+      reservePrice: reservePriceLamports,
+      ticketCollection: ticketCollectionKey,
+      artCategory: artCategoryVariant // Using the variant object for Anchor serialization
     };
     
-    debug("Event creation successful", { id: newEvent.id, title: newEvent.title });
-    
-    return { event: newEvent, signature };
-  } catch (error) {
-    debug("Error minting event", error);
-    
-    // Improve error reporting
-    if (error instanceof Error) {
-      debug("Error details", error.message);
-      if (error.stack) debug("Stack trace", error.stack);
+    debug('Final event parameters', {
+      name: eventParams.name,
+      uri: eventParams.uri,
+      beginTimestamp: new Date(eventParams.beginTimestamp * 1000).toISOString(),
+      endTimestamp: new Date(eventParams.endTimestamp * 1000).toISOString(),
+      reservePrice: eventParams.reservePrice / LAMPORTS_PER_SOL + ' SOL',
+      ticketCollection: eventParams.ticketCollection.toString(),
+      artCategory: eventParams.artCategory
+    });
+
+    // 8. Set up for direct transaction with proper Borsh serialization
+    // Create provider and program instances
+    try {
+      const provider = createAnchorProvider(connection, wallet);
+      const program = createHausProgram(provider);
       
-      // Check for phantom errors
-      const errorMessage = error.message.toLowerCase();
+      // 9. Create the event on-chain using direct transaction with manual Borsh serialization
+      debug('Creating event on-chain with manual Borsh serialization', realtimeAsset.publicKey.toString());
       
-      if (errorMessage.includes("disconnected port") || errorMessage.includes("contentscript")) {
-        throw new Error("Browser extension communication error: Please refresh the page and try again.");
-      } else if (errorMessage.includes("phantom")) {
-        throw new Error("Phantom wallet error: " + error.message);
-      } else if (errorMessage.includes("network") || errorMessage.includes("timeout")) {
-        throw new Error("Network error: Please check your internet connection and try again.");
-      } else if (errorMessage.includes("signtransaction")) {
-        throw new Error("Wallet signing issue: Unable to sign transaction. Please reconnect your wallet.");
-      } else if (errorMessage.includes("public key")) {
-        throw new Error("Wallet connection issue: Please reconnect your wallet and try again.");
-      } else if (errorMessage.includes("user rejected")) {
-        throw new Error("Transaction rejected: You declined the transaction in your wallet.");
+      // Use our direct transaction implementation with proper Borsh serialization
+      const txSignature = await createEventDirectly(
+        connection, 
+        wallet, 
+        program, 
+        realtimeAsset, 
+        eventParams
+      );
+      
+      debug('Event created successfully with signature', txSignature);
+
+      // Return the transaction signature and realtime asset key
+      return {
+        transactionSignature: txSignature,
+        realtimeAssetKey: realtimeAsset.publicKey.toString()
+      };
+    } catch (error) {
+      debug('Error creating event on-chain', error);
+      
+      // Check for specific errors related to the Solana program
+      if (error.message && error.message.includes('0x1780')) {
+        throw new Error('Ticket collection not found or invalid. Please try again with a different name.');
       }
+      
+      if (error.message && error.message.includes('0x1781')) {
+        throw new Error('Event duration is invalid. Please check start and end times.');
+      }
+      
+      throw new Error(`Failed to create event on-chain: ${error.message}`);
+    }
+  } catch (error) {
+    debug('Error minting event', error);
+    
+    // Provide specific error messages based on error types
+    if (error instanceof Error) {
+      if (error.message.includes('User rejected')) {
+        throw new Error('Transaction rejected by wallet. Please try again and approve the transaction.');
+      } else if (error.message.includes('Blockhash not found')) {
+        throw new Error('Network error: Blockhash not found. The Solana network may be congested. Please try again.');
+      } else if (error.message.includes('Invalid ticket collection')) {
+        throw new Error('Invalid ticket collection. Please restart the minting process.');
+      } else if (error.message.includes('InstructionDidNotDeserialize')) {
+        throw new Error('Failed to create event: The program could not process the instruction. Please check parameters and try again.');
+      }
+      throw error;
     }
     
-    throw new Error("Failed to mint event: " + (error instanceof Error ? error.message : String(error)));
+    throw new Error(`Failed to mint event: ${String(error)}`);
   }
-} 
+}

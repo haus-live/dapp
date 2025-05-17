@@ -1,194 +1,187 @@
+/**
+ * Pinata IPFS service for uploading and pinning files and JSON
+ * Production implementation with proper authentication and error handling
+ */
 import axios from 'axios';
-import { 
-  PINATA_API_KEY, 
-  PINATA_API_SECRET, 
-  PINATA_JWT, 
-  PINATA_URL, 
-  PINATA_GATEWAY_URL 
-} from '@/lib/env';
+import { PINATA_API_KEY, PINATA_API_SECRET, PINATA_JWT, PINATA_GATEWAY_URL } from '@/lib/env';
 
 /**
- * Uploads a file to IPFS via Pinata
+ * Alias for storeFileOnPinata to maintain compatibility
  * @param file File to upload
- * @param name Name for the file
- * @returns CID (Content Identifier) of the uploaded file
+ * @param name Custom name for the file (optional)
+ * @returns CID of the uploaded file
  */
-export async function uploadFileToPinata(file: File, name: string): Promise<string> {
-  console.log(`Uploading file to Pinata: ${name}`, { fileSize: file.size, fileType: file.type });
+export const uploadFileToPinata = storeFileOnPinata;
+
+/**
+ * Fetches JSON data from Pinata IPFS
+ * @param cid Content identifier (CID) of the JSON data
+ * @returns Parsed JSON data
+ */
+export async function fetchFromPinata<T = any>(cid: string): Promise<T> {
+  console.log(`Fetching data from Pinata with CID: ${cid}`);
   
   try {
-    // Create form data for the file upload
+    const url = getPinataUrl(cid);
+    const response = await axios.get(url);
+    
+    console.log('Data fetched from Pinata successfully');
+    return response.data as T;
+  } catch (error) {
+    console.error('Error fetching data from Pinata:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(`Pinata fetch failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+    }
+    throw new Error(`Failed to fetch data from Pinata: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Gets the full URL for a Pinata IPFS resource
+ * @param cid Content identifier (CID) of the resource
+ * @returns Full URL to access the resource
+ */
+export function getPinataUrl(cid: string): string {
+  if (!cid) return '';
+  return `${PINATA_GATEWAY_URL}/${cid}`;
+}
+
+/**
+ * Stores a user profile to IPFS
+ * @param profileData User profile data
+ * @param address User wallet address
+ * @returns CID of the stored profile
+ */
+export async function storeUserProfile(profileData: any, address: string): Promise<string> {
+  return storeJsonOnPinata(profileData, `haus-user-${address}`);
+}
+
+/**
+ * Uploads a file to Pinata IPFS
+ * @param file File to upload
+ * @param name Custom name for the file (optional)
+ * @returns CID of the uploaded file
+ */
+export async function storeFileOnPinata(
+  file: File,
+  name?: string
+): Promise<string> {
+  console.log(`Uploading file to Pinata: ${name || file.name}`, {
+    fileSize: file.size,
+    fileType: file.type
+  });
+
+  try {
+    // Create form data
     const formData = new FormData();
     formData.append('file', file);
     
-    const metadata = JSON.stringify({
-      name,
-      keyvalues: {
-        app: 'haus-live',
-        timestamp: Date.now().toString()
-      }
-    });
-    formData.append('pinataMetadata', metadata);
+    // Add metadata if name is provided
+    if (name) {
+      formData.append('pinataMetadata', JSON.stringify({
+        name: name
+      }));
+    }
     
-    // Use JWT authentication if available, otherwise use API key/secret
-    const headers: Record<string, string> = {};
+    let headers = {};
     
+    // Use JWT if available, otherwise use API key and secret
     if (PINATA_JWT) {
-      headers['Authorization'] = `Bearer ${PINATA_JWT}`;
-      console.log("Using JWT authentication for Pinata");
+      console.log('Using JWT authentication for Pinata');
+      headers = {
+        'Authorization': `Bearer ${PINATA_JWT}`
+      };
     } else if (PINATA_API_KEY && PINATA_API_SECRET) {
-      headers['pinata_api_key'] = PINATA_API_KEY;
-      headers['pinata_secret_api_key'] = PINATA_API_SECRET;
-      console.log("Using API key authentication for Pinata");
+      console.log('Using API key authentication for Pinata');
+      headers = {
+        'pinata_api_key': PINATA_API_KEY,
+        'pinata_secret_api_key': PINATA_API_SECRET
+      };
     } else {
-      throw new Error("No Pinata credentials found");
+      throw new Error('No Pinata authentication credentials provided');
     }
     
-    // Make the API request
-    console.log("Sending file to Pinata...");
-    const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
-      method: 'POST',
-      headers,
-      body: formData
-    });
+    console.log('Sending file to Pinata...');
+    const response = await axios.post(
+      'https://api.pinata.cloud/pinning/pinFileToIPFS',
+      formData,
+      {
+        headers: {
+          ...headers,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Pinata API error:", errorText);
-      throw new Error(`Pinata API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    console.log("File uploaded to Pinata successfully", result);
-    
-    return result.IpfsHash;
+    console.log('File uploaded to Pinata successfully', response.data);
+    return response.data.IpfsHash;
   } catch (error) {
-    console.error("Error uploading file to Pinata:", error);
-    throw new Error(`Failed to upload to IPFS: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Error uploading file to Pinata:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(`Pinata upload failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+    }
+    throw new Error(`Failed to upload file to Pinata: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /**
- * Stores JSON data on IPFS via Pinata
- * @param jsonData JSON data to store
- * @param name Name for the JSON file
- * @returns CID (Content Identifier) of the uploaded JSON
+ * Uploads JSON data to Pinata IPFS
+ * @param jsonData JSON data to upload
+ * @param name Custom name for the data
+ * @returns CID of the uploaded JSON
  */
-export async function storeJsonOnPinata(jsonData: any, name: string): Promise<string> {
+export async function storeJsonOnPinata(
+  jsonData: any,
+  name: string
+): Promise<string> {
   console.log(`Storing JSON on Pinata: ${name}`);
   
   try {
-    // Prepare the data for the API request
-    const data = JSON.stringify({
+    // Prepare the JSON data with metadata
+    const data = {
       pinataContent: jsonData,
       pinataMetadata: {
-        name,
-        keyvalues: {
-          app: 'haus-live',
-          timestamp: Date.now().toString()
-        }
+        name: name
       }
-    });
-    
-    // Use JWT authentication if available, otherwise use API key/secret
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
     };
     
+    let headers = {};
+    
+    // Use JWT if available, otherwise use API key and secret
     if (PINATA_JWT) {
-      headers['Authorization'] = `Bearer ${PINATA_JWT}`;
-      console.log("Using JWT authentication for Pinata");
+      console.log('Using JWT authentication for Pinata');
+      headers = {
+        'Authorization': `Bearer ${PINATA_JWT}`
+      };
     } else if (PINATA_API_KEY && PINATA_API_SECRET) {
-      headers['pinata_api_key'] = PINATA_API_KEY;
-      headers['pinata_secret_api_key'] = PINATA_API_SECRET;
-      console.log("Using API key authentication for Pinata");
+      console.log('Using API key authentication for Pinata');
+      headers = {
+        'pinata_api_key': PINATA_API_KEY,
+        'pinata_secret_api_key': PINATA_API_SECRET
+      };
     } else {
-      throw new Error("No Pinata credentials found");
+      throw new Error('No Pinata authentication credentials provided');
     }
     
-    // Make the API request
-    console.log("Sending JSON to Pinata...");
-    const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
-      method: 'POST',
-      headers,
-      body: data
-    });
+    console.log('Sending JSON to Pinata...');
+    const response = await axios.post(
+      'https://api.pinata.cloud/pinning/pinJSONToIPFS',
+      data,
+      {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Pinata API error:", errorText);
-      throw new Error(`Pinata API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    console.log("JSON uploaded to Pinata successfully", result);
-    
-    return result.IpfsHash;
+    console.log('JSON uploaded to Pinata successfully', response.data);
+    return response.data.IpfsHash;
   } catch (error) {
-    console.error("Error storing JSON on Pinata:", error);
-    throw new Error(`Failed to store JSON on IPFS: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Error uploading JSON to Pinata:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(`Pinata JSON upload failed: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+    }
+    throw new Error(`Failed to upload JSON to Pinata: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-
-/**
- * Gets the status of a file on Pinata by its CID
- * @param cid CID (Content Identifier) of the file
- * @returns Pin status information
- */
-export async function getPinStatus(cid: string): Promise<any> {
-  console.log(`Getting pin status for CID: ${cid}`);
-  
-  try {
-    // Use JWT authentication if available, otherwise use API key/secret
-    const headers: Record<string, string> = {};
-    
-    if (PINATA_JWT) {
-      headers['Authorization'] = `Bearer ${PINATA_JWT}`;
-    } else if (PINATA_API_KEY && PINATA_API_SECRET) {
-      headers['pinata_api_key'] = PINATA_API_KEY;
-      headers['pinata_secret_api_key'] = PINATA_API_SECRET;
-    } else {
-      throw new Error("No Pinata credentials found");
-    }
-    
-    // Make the API request
-    const response = await fetch(`https://api.pinata.cloud/pinning/pinJobs?ipfs_pin_hash=${cid}`, {
-      method: 'GET',
-      headers
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Pinata API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    console.error("Error getting pin status:", error);
-    throw error;
-  }
-}
-
-/**
- * Get data from IPFS via Pinata gateway
- * @param cid The IPFS CID to fetch
- * @returns The data at the given CID
- */
-export async function fetchFromPinata<T>(cid: string): Promise<T> {
-  try {
-    const response = await axios.get<T>(`${PINATA_GATEWAY_URL}/${cid}`);
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching data from Pinata:', error);
-    throw error;
-  }
-}
-
-/**
- * Get the gateway URL for a CID
- * @param cid The IPFS CID
- * @returns The full gateway URL
- */
-export function getPinataUrl(cid: string): string {
-  return `${PINATA_GATEWAY_URL}/${cid}`;
-} 

@@ -26,6 +26,7 @@ import { mintEvent } from "@/lib/solana/event-minter"
 import { useSolanaWallet } from "@/contexts/solana-wallet-context"
 import { toast } from "@/components/ui/use-toast"
 import { clusterApiUrl, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
+import { Event } from "@/lib/types"
 
 type Step = "category" | "details" | "format" | "sales" | "mint"
 type Category =
@@ -100,6 +101,7 @@ export default function EventFactory() {
 
   // Enhanced handleMintEvent function with improved wallet handling
   const handleMintEvent = async () => {
+    debug("Mint button clicked directly");
     debug("Mint button clicked");
 
     // Check for window.solana and window.phantom (Phantom wallet global)
@@ -133,32 +135,38 @@ export default function EventFactory() {
       phantomConnected: window.phantom?.solana?.isConnected
     });
 
-    // If not connected, try direct connection
-    if (!publicKey || !window.phantom.solana.isConnected) {
-      debug("No connected wallet found, attempting direct connection");
+    // If not connected, connect directly with Phantom wallet
+    const phantomWallet = window.phantom.solana;
+    if (!publicKey || !phantomWallet.isConnected) {
+      debug("No connected wallet found, attempting direct connection with Phantom");
+      
+      toast({
+        title: "Connecting to Phantom wallet",
+        description: "Please approve the connection request in your wallet",
+        variant: "default"
+      });
       
       try {
-        const resp = await window.phantom.solana.connect();
+        // Directly connect to Phantom wallet - this will trigger the Phantom popup
+        const resp = await phantomWallet.connect();
         debug("Direct connection successful", resp.publicKey.toString());
         
-        // We'll need to refresh the page to update context state
         toast({
-          title: "Wallet connected",
-          description: "Your wallet is now connected. Please try minting again.",
+          title: "Wallet connected successfully",
+          description: "Now proceeding with event creation...",
           variant: "default"
         });
         
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
-        return;
+        // Short delay before proceeding to ensure the UI updates
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
         debug("Direct wallet connection failed", error);
         toast({
           title: "Wallet connection failed",
-          description: "Please try connecting your wallet manually first",
+          description: "Please try connecting your wallet manually using the Connect button",
           variant: "destructive"
         });
+        setIsLoading(false);
         return;
       }
     }
@@ -179,49 +187,90 @@ export default function EventFactory() {
       
       debug("Creating wallet adapter for Anchor");
       
-      // For consistent behavior, prefer the window.phantom.solana methods
-      // which are directly tied to the Phantom extension
-      const phantomSolana = window.phantom.solana;
+      // Verify we have all the necessary fields from Phantom
+      if (!phantomWallet.publicKey) {
+        throw new Error("Cannot access wallet public key. Please reconnect your wallet.");
+      }
       
-      // Create wallet adapter with the most reliable signing methods
-      const wallet = {
-        publicKey: new PublicKey(phantomSolana.publicKey?.toString() || publicKey?.toString() || ''),
+      debug("Phantom wallet state:", {
+        isConnected: phantomWallet.isConnected,
+        publicKey: phantomWallet.publicKey.toString(),
+        isPhantom: phantomWallet.isPhantom
+      });
+      
+      // Create our own wallet adapter for the transactions
+      // This ensures we're working directly with the wallet's methods
+      const walletAdapter = {
+        publicKey: phantomWallet.publicKey,
         signTransaction: async (transaction: Transaction) => {
-          debug("Signing transaction...");
-          const signedTx = await phantomSolana.signTransaction(transaction);
-          debug("Transaction signed successfully");
-          return signedTx;
+          debug("Requesting transaction signature from Phantom...");
+          
+          toast({
+            title: "Please check your wallet",
+            description: "A transaction approval is waiting in your Phantom wallet",
+            variant: "default"
+          });
+          
+          try {
+            const signedTx = await phantomWallet.signTransaction(transaction);
+            debug("Transaction signed successfully by Phantom");
+            return signedTx;
+          } catch (error) {
+            debug("Error during transaction signing:", error);
+            if (error instanceof Error && error.message.includes('User rejected')) {
+              throw new Error("Transaction was rejected in your wallet. Please try again and approve the transaction.");
+            }
+            throw error;
+          }
         },
         signAllTransactions: async (transactions: Transaction[]) => {
-          debug("Signing multiple transactions...");
-          const signedTxs = await phantomSolana.signAllTransactions(transactions);
-          debug("All transactions signed successfully");
-          return signedTxs;
+          debug("Requesting multiple transaction signatures from Phantom...");
+          
+          toast({
+            title: "Please check your wallet",
+            description: "Multiple transaction approvals are waiting in your Phantom wallet",
+            variant: "default"
+          });
+          
+          try {
+            const signedTxs = await phantomWallet.signAllTransactions(transactions);
+            debug("All transactions signed successfully by Phantom");
+            return signedTxs;
+          } catch (error) {
+            debug("Error during multiple transaction signing:", error);
+            if (error instanceof Error && error.message.includes('User rejected')) {
+              throw new Error("Transactions were rejected in your wallet. Please try again and approve all transactions.");
+            }
+            throw error;
+          }
         }
       };
       
-      // Extra validation to ensure we have signing methods
-      if (!wallet.publicKey) {
-        debug("No public key available");
-        throw new Error("No wallet public key available. Please reconnect your wallet.");
-      }
+      // Display a toast to let the user know we're proceeding
+      toast({
+        title: "Creating your event...",
+        description: "First creating ticket collection, then minting your event NFT",
+        variant: "default"
+      });
       
-      debug("Starting event minting process with wallet:", wallet.publicKey.toString());
+      debug("Starting event minting process with wallet:", walletAdapter.publicKey.toString());
       
-      // Mint the event on Solana
-      const { event, signature } = await mintEvent(
-        formData, 
-        wallet,
-        userProfile?.username || 'Anonymous' // Add fallback in case userProfile is null
+      // Mint the event on Solana - this will create ticket collection and mint the event NFT
+      const { transactionSignature, realtimeAssetKey } = await mintEvent(
+        walletAdapter,
+        formData
       );
       
-      debug("Minting successful", { eventId: event.id, signature });
+      debug("Minting successful", { realtimeAssetKey, transactionSignature });
       
       // Store transaction signature
-      setTxSignature(signature);
+      setTxSignature(transactionSignature);
       
-      // Add the event to global state
-      await addEvent(event);
+      // Import the helper for better code organization
+      const { createAndMintEvent } = await import('./mint-helper');
+      
+      // Add the event to global state using our helper
+      const result = await createAndMintEvent(walletAdapter, formData, userProfile, addEvent);
       
       // Show success message
       toast({

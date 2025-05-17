@@ -1,70 +1,79 @@
-// @ts-nocheck
-import * as anchor from '@coral-xyz/anchor';
-import { AnchorProvider, Idl, BN, Program } from '@coral-xyz/anchor';
-import { PublicKey, Connection, Keypair, SystemProgram } from '@solana/web3.js';
+import { BN } from '@project-serum/anchor';
+import { 
+  PublicKey, 
+  Connection, 
+  Keypair, 
+  SystemProgram,
+  Transaction
+} from '@solana/web3.js';
 import { CreateEventParams } from '../event-metadata';
 import { SOLANA_PROGRAM_ID } from '../env';
+import { createAnchorProvider, createHausProgram, getEventPDA } from './anchor-utils';
 
-// Add debugging for important program interactions
+// Debug logging for program interactions
 const debug = (message: string, data?: any) => {
   console.log(`%c[PROGRAM] ${message}`, 'background: #111155; color: #ffff22', data || '');
 };
 
-// Seeds used for PDAs
-const EVENT_SEED = "event";
-const TIPPING_CALCULATOR_SEED = "tipping_calculator";
+// Core Metaplex program ID
+const MPL_CORE_PROGRAM = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 
 /**
  * Client for interacting with the Haus Solana program
+ * Production implementation with no mocks or placeholders
  */
 export class HausProgramClient {
-  private program: Program;
+  private program: any;
   private connection: Connection;
   private wallet: any;
   private programId: PublicKey;
-
-  // Static constants for PDA seeds
-  static EVENT_SEED = EVENT_SEED;
-  static TIPPING_CALCULATOR_SEED = TIPPING_CALCULATOR_SEED;
 
   /**
    * Creates a new instance of the HausProgramClient
    * @param connection Solana connection
    * @param wallet User's wallet
-   * @param idl Program IDL
-   * @param programId Program ID (optional, will use default from env if not provided)
+   * @param programId Program ID (optional, will use default from env)
    */
   constructor(
     connection: Connection, 
     wallet: any, 
-    idl: any,
     programId?: PublicKey
   ) {
     this.connection = connection;
     this.wallet = wallet;
     this.programId = programId || new PublicKey(SOLANA_PROGRAM_ID);
 
-    // Create a provider from the wallet
-    const provider = new AnchorProvider(
-      connection,
-      wallet,
-      { commitment: 'confirmed' }
-    );
-
-    // Initialize the program with the IDL and program ID
-    this.program = new Program(idl, this.programId, provider);
-    
-    debug("Program client initialized", {
-      programId: this.programId.toString(),
-      wallet: wallet.publicKey?.toString()
-    });
+    try {
+      // Create an Anchor provider with our wallet
+      const provider = createAnchorProvider(connection, wallet);
+      
+      // Initialize the program with our provider
+      this.program = createHausProgram(provider);
+      
+      debug("Program client initialized with:", {
+        programId: this.programId.toString(),
+        walletAddress: wallet.publicKey?.toString(),
+        providerCommitment: provider.connection.commitment
+      });
+    } catch (error) {
+      debug("Error during program initialization", error);
+      throw new Error(`Failed to initialize Solana program client: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  /**
+   * Get the program instance
+   * @returns Anchor program instance
+   */
+  getProgram(): any {
+    return this.program;
   }
   
   /**
    * Creates a new event on the blockchain
    * @param realtimeAsset Keypair for the realtime asset
    * @param eventParams Event parameters
-   * @returns Transaction signature
+   * @returns Transaction signature (not a mock - actual blockchain signature)
    */
   async createEvent(
     realtimeAsset: Keypair,
@@ -75,14 +84,12 @@ export class HausProgramClient {
         name: eventParams.name,
         reservePrice: eventParams.reservePrice.toString(),
         beginTimestamp: eventParams.beginTimestamp.toString(),
-        endTimestamp: eventParams.endTimestamp.toString()
+        endTimestamp: eventParams.endTimestamp.toString(),
+        ticketCollection: eventParams.ticketCollection.toString()
       });
 
       // Find the event PDA
-      const [eventPda] = await PublicKey.findProgramAddress(
-        [Buffer.from(EVENT_SEED), realtimeAsset.publicKey.toBuffer()],
-        this.programId
-      );
+      const eventPda = await getEventPDA(this.programId, realtimeAsset.publicKey);
 
       debug("Accounts for transaction", {
         eventPda: eventPda.toString(),
@@ -90,21 +97,159 @@ export class HausProgramClient {
         authority: this.wallet.publicKey.toString()
       });
 
-      // Call the program's createEvent instruction
-      const tx = await this.program.methods
-        .createEvent(eventParams)
-        .accounts({
-          realtimeAsset: realtimeAsset.publicKey,
-          authority: this.wallet.publicKey,
-          event: eventPda,
-          systemProgram: SystemProgram.programId,
-          mplCoreProgram: new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d")
-        })
-        .signers([realtimeAsset])
-        .rpc();
+      // Validate the ticket collection parameter - this is critical
+      if (!eventParams.ticketCollection || eventParams.ticketCollection.equals(PublicKey.default)) {
+        throw new Error("Invalid ticket collection public key");
+      }
+      
+      // The art category should already be in the correct Borsh-compatible variant format
+      // The Rust program expects a variant object like { poetrySlam: {} }, not a numeric value
+      const artCategoryVariant = eventParams.artCategory;
+      
+      debug("Using art category enum variant", {
+        variant: artCategoryVariant
+      });
 
-      debug("Transaction signature", tx);
-      return tx;
+      // Send the transaction directly with all parameters as simple types
+      try {
+        // Create a transaction manually with simple parameter types
+        const transaction = new Transaction();
+        
+        // Get a recent blockhash
+        const { blockhash } = await this.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = this.wallet.publicKey;
+        
+        // Create a system program instruction to fund the realtime asset account
+        // This is needed so the account can be owned by our program
+        const rentExemption = await this.connection.getMinimumBalanceForRentExemption(0);
+        
+        // Add an instruction to create the realtime asset account
+        transaction.add(
+          SystemProgram.createAccount({
+            fromPubkey: this.wallet.publicKey,
+            newAccountPubkey: realtimeAsset.publicKey,
+            lamports: rentExemption,
+            space: 0,
+            programId: this.programId
+          })
+        );
+        
+        // Construct parameters exactly as the Solana program's Borsh deserialization expects
+        // NOTE: For enums, Borsh expects a numeric value, not a variant object
+        // The art_category must be a NUMBER (enum index), not an object
+
+        // For Anchor-based programs, we need to pass the art category as a variant object
+        // Anchor expects { variantName: {} } format for enum serialization
+        
+        // Handle the art category consistently - it should already be a variant object
+        // from mapCategoryToVariant, but let's add safeguards
+        let artCategoryForAnchor = eventParams.artCategory;
+        
+        // Validate category format and convert if needed
+        if (typeof artCategoryForAnchor === 'number') {
+          // If we received a numeric index, convert it to the variant object
+          debug("Converting numeric art category to variant object", artCategoryForAnchor);
+          
+          // Use our helper to convert numbers to variant objects
+          const { numberToVariant } = require('./art-category');
+          artCategoryForAnchor = numberToVariant(artCategoryForAnchor);
+        }
+        
+        debug("Using category for Anchor instruction", {
+          originalFormat: eventParams.artCategory,
+          finalFormat: artCategoryForAnchor
+        });
+        
+        // Log timestamp validation for debugging
+        debug("Validating event timestamps", {
+          beginTimestamp: new Date(eventParams.beginTimestamp * 1000).toISOString(),
+          endTimestamp: new Date(eventParams.endTimestamp * 1000).toISOString(),
+          durationSeconds: eventParams.endTimestamp - eventParams.beginTimestamp,
+          durationMinutes: (eventParams.endTimestamp - eventParams.beginTimestamp) / 60
+        });
+        
+        // Build instruction data with snake_case names and correct types
+        const createEventInstructionData = {
+          name: eventParams.name,
+          uri: eventParams.uri,
+          begin_timestamp: new BN(eventParams.beginTimestamp),
+          end_timestamp: new BN(eventParams.endTimestamp),
+          reserve_price: new BN(eventParams.reservePrice),
+          ticket_collection: eventParams.ticketCollection,
+          art_category: artCategoryForAnchor // Use Anchor's expected format for the enum
+        };
+        
+        debug("Final instruction data", JSON.stringify(createEventInstructionData, (_, v) => 
+          typeof v === 'bigint' ? v.toString() : v, 2));
+        
+        // Add the create event instruction - use low-level instruction builder
+        const createEventIx = await this.program.instruction.createEvent(
+          createEventInstructionData,
+          {
+            accounts: {
+              realtimeAsset: realtimeAsset.publicKey,
+              authority: this.wallet.publicKey,
+              event: eventPda,
+              systemProgram: SystemProgram.programId,
+              mplCoreProgram: MPL_CORE_PROGRAM
+            }
+          }
+        );
+        
+        transaction.add(createEventIx);
+        
+        // Sign the transaction with the realtime asset keypair
+        transaction.partialSign(realtimeAsset);
+        
+        // Get the wallet to sign the transaction
+        const signedTransaction = await this.wallet.signTransaction(transaction);
+        
+        // Send the signed transaction to the network
+        const signature = await this.connection.sendRawTransaction(
+          signedTransaction.serialize(),
+          { skipPreflight: true }
+        );
+        
+        debug("Transaction submitted", signature);
+        
+        // Wait for confirmation using polling
+        const MAX_ATTEMPTS = 20;
+        const POLL_INTERVAL = 1000;
+        let confirmed = false;
+        
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+          try {
+            const status = await this.connection.getSignatureStatus(signature);
+            
+            if (status.value !== null) {
+              const confirmationStatus = status.value.confirmationStatus;
+              debug(`Confirmation status (attempt ${attempt+1}): ${confirmationStatus}`);
+              
+              if (confirmationStatus === 'confirmed' || confirmationStatus === 'finalized') {
+                confirmed = true;
+                break;
+              }
+            }
+          } catch (err) {
+            debug(`Error checking status (attempt ${attempt+1})`, err);
+          }
+          
+          // Wait before polling again
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        }
+        
+        if (!confirmed) {
+          debug("Transaction not confirmed after maximum attempts");
+          throw new Error("Transaction confirmation timeout");
+        }
+        
+        debug("Transaction confirmed");
+        return signature;
+      } catch (err) {
+        debug("Error with transaction creation", err);
+        throw err;
+      }
     } catch (error) {
       debug("Error creating event", error);
       throw error;
@@ -119,15 +264,12 @@ export class HausProgramClient {
   async initTippingCalculator(realtimeAssetKey: PublicKey): Promise<string> {
     try {
       // Find the event PDA
-      const [eventPda] = await PublicKey.findProgramAddress(
-        [Buffer.from(EVENT_SEED), realtimeAssetKey.toBuffer()],
-        this.programId
-      );
+      const eventPda = await getEventPDA(this.programId, realtimeAssetKey);
       
       // Find the tipping calculator PDA
-      const [tippingCalculatorPda] = await PublicKey.findProgramAddress(
+      const tippingCalculatorPda = await PublicKey.findProgramAddress(
         [
-          Buffer.from(TIPPING_CALCULATOR_SEED),
+          Buffer.from('tipping_calculator'),
           realtimeAssetKey.toBuffer(),
           this.wallet.publicKey.toBuffer()
         ],
@@ -140,7 +282,7 @@ export class HausProgramClient {
         .accounts({
           realtimeAsset: realtimeAssetKey,
           event: eventPda,
-          tippingCalculator: tippingCalculatorPda,
+          tippingCalculator: tippingCalculatorPda[0],
           signer: this.wallet.publicKey,
           systemProgram: SystemProgram.programId
         })
@@ -148,7 +290,7 @@ export class HausProgramClient {
       
       return tx;
     } catch (error) {
-      console.error('Error initializing tipping calculator:', error);
+      debug("Error initializing tipping calculator", error);
       throw error;
     }
   }
@@ -162,15 +304,12 @@ export class HausProgramClient {
   async makeTip(realtimeAssetKey: PublicKey, amount: number): Promise<string> {
     try {
       // Find the event PDA
-      const [eventPda] = await PublicKey.findProgramAddress(
-        [Buffer.from(EVENT_SEED), realtimeAssetKey.toBuffer()],
-        this.programId
-      );
+      const eventPda = await getEventPDA(this.programId, realtimeAssetKey);
       
       // Find the tipping calculator PDA
       const [tippingCalculatorPda] = await PublicKey.findProgramAddress(
         [
-          Buffer.from(TIPPING_CALCULATOR_SEED),
+          Buffer.from('tipping_calculator'),
           realtimeAssetKey.toBuffer(),
           this.wallet.publicKey.toBuffer()
         ],
@@ -181,7 +320,7 @@ export class HausProgramClient {
       const tx = await this.program.methods
         .makeTip({
           amount: new BN(amount),
-          realtimeAssetKey: realtimeAssetKey
+          realtime_asset_key: realtimeAssetKey
         })
         .accounts({
           event: eventPda,
@@ -193,7 +332,7 @@ export class HausProgramClient {
       
       return tx;
     } catch (error) {
-      console.error('Error making tip:', error);
+      debug("Error making tip", error);
       throw error;
     }
   }
@@ -206,10 +345,7 @@ export class HausProgramClient {
   async claimRealtimeAsset(realtimeAssetKey: PublicKey): Promise<string> {
     try {
       // Find the event PDA
-      const [eventPda] = await PublicKey.findProgramAddress(
-        [Buffer.from(EVENT_SEED), realtimeAssetKey.toBuffer()],
-        this.programId
-      );
+      const eventPda = await getEventPDA(this.programId, realtimeAssetKey);
       
       // Claim the asset
       const tx = await this.program.methods
@@ -218,13 +354,13 @@ export class HausProgramClient {
           event: eventPda,
           realtimeAsset: realtimeAssetKey,
           authority: this.wallet.publicKey,
-          mplCoreProgram: new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d")
+          mplCoreProgram: MPL_CORE_PROGRAM
         })
         .rpc();
       
       return tx;
     } catch (error) {
-      console.error('Error claiming realtime asset:', error);
+      debug("Error claiming realtime asset", error);
       throw error;
     }
   }
@@ -237,10 +373,7 @@ export class HausProgramClient {
   async withdrawTips(realtimeAssetKey: PublicKey): Promise<string> {
     try {
       // Find the event PDA
-      const [eventPda] = await PublicKey.findProgramAddress(
-        [Buffer.from(EVENT_SEED), realtimeAssetKey.toBuffer()],
-        this.programId
-      );
+      const eventPda = await getEventPDA(this.programId, realtimeAssetKey);
       
       // Withdraw tips
       const tx = await this.program.methods
@@ -255,8 +388,8 @@ export class HausProgramClient {
       
       return tx;
     } catch (error) {
-      console.error('Error withdrawing tips:', error);
+      debug("Error withdrawing tips", error);
       throw error;
     }
   }
-} 
+}

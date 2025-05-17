@@ -2,6 +2,14 @@
 
 Haus introduces dynamic, Real-Time Assets (RTAs) to the NFT space, bringing a revolutionary approach to digital ownership in Web3. Enter the artist's workshop and own artworks that acquire value with time.
 
+## Documentation Index
+
+- [Project Documentation](project-documentation.md) - Complete codebase overview and architecture
+- [System Architecture](system-architecture.md) - Technical architecture details
+- [RTA Mechanism](rta-mechanism.md) - Real-Time Asset implementation details
+- [RTA Game Theory](rta-game-theory.md) - Theory behind Real-Time Assets
+- [Why Solana](why-solana.md) - Rationale for using Solana blockchain
+
 ## What are Real-Time Assets (RTAs)?
 
 RTAs are a new class of digital assets that evolve in real-time during live performances, capturing the entire creative process. Unlike traditional NFTs that represent a static final product, RTAs represent the journey of creation itself.
