@@ -28,7 +28,7 @@ export async function createEventDirectlyAdapter(connection: Connection, wallet:
     );
 }
 
-async function createEvent(connection: Connection, wallet: WalletContextState, _realtimeAsset: Keypair, args: {
+async function createEvent(connection: Connection, wallet: WalletContextState, realtimeAsset: Keypair, args: {
     name: string,
     uri: string,
     beginTimestamp: number,
@@ -62,7 +62,7 @@ async function createEvent(connection: Connection, wallet: WalletContextState, _
     ];
     const artCategory: ArtCategoryEnum = artCategoryChoices.at(args.artCategory) as ArtCategoryEnum;
     
-    const realtimeAsset = new Keypair();
+    // const realtimeAsset = new Keypair();
 
     const createEventArgs = {
       name: args.name,
@@ -81,7 +81,7 @@ async function createEvent(connection: Connection, wallet: WalletContextState, _
     ];
     const [eventPubkey, _] = anchor.web3.PublicKey.findProgramAddressSync(
       eventSeeds,
-      new anchor.web3.PublicKey(HAUS_PROGRAM_ID)
+      hausProgram.programId
     );
 
     try {

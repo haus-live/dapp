@@ -37,7 +37,7 @@ export default function EventRoom() {
         <div className="lg:col-span-2 bg-black rounded-lg overflow-hidden aspect-video">
           {/* Video player would go here */}
           <div className="flex items-center justify-center h-full text-white">
-            Video stream will appear here
+            <iframe src="http://16.171.135.53:8080/617f7575-c9f8-42f2-b706-344c0d997afb.html" width="640" height="360"></iframe>
           </div>
         </div>
 
