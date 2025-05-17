@@ -1,4 +1,67 @@
-# Haus Live dApp
+# HAUS dApp
+
+HAUS is a decentralized application for live event ticketing and streaming built on Solana.
+
+## Codebase Improvements
+
+We've consolidated the Solana-related functionality to improve maintainability and reduce duplication:
+
+- All Solana functionality is now centralized in `lib/solana/utils.ts`, which includes:
+  - Provider/program initialization
+  - Event minting and direct transactions
+  - Ticket collection creation
+  - Borsh serialization helpers
+  - Art category utilities
+  - PDA (Program Derived Address) derivation
+
+This consolidation removes redundancy, improves consistency, and makes the codebase more maintainable.
+
+## Setup
+
+To run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Environmental Variables
+
+The application requires the following environment variables:
+
+```
+# Solana RPC URL
+NEXT_PUBLIC_SOLANA_RPC_URL=
+
+# Solana program ID
+NEXT_PUBLIC_SOLANA_PROGRAM_ID=
+
+# Pinata IPFS configuration
+NEXT_PUBLIC_PINATA_API_KEY=
+NEXT_PUBLIC_PINATA_API_SECRET=
+NEXT_PUBLIC_PINATA_JWT=
+NEXT_PUBLIC_PINATA_GATEWAY_URL=
+```
+
+See `env.md` for more details.
+
+## Learn More
+
+This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+## Deployment
+
+The app is ready to be deployed on platforms that support Next.js applications, such as Vercel.
 
 ## Overview
 Haus Live is a platform for creating and attending live events, using Solana blockchain for ticketing and ownership.

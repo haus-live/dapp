@@ -2,7 +2,7 @@
  * Helper functions for minting events in the event factory
  */
 import { useEvents } from "@/contexts/events-context";
-import { mintEvent } from "@/lib/solana/event-minter";
+import { mintEvent } from "@/lib/solana/utils";
 import { Event } from "@/lib/types";
 
 /**

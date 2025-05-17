@@ -2,7 +2,7 @@
  * Production event minting actions
  * Handles wallet interaction and blockchain transactions
  */
-import { mintEvent } from '@/lib/solana/event-minter';
+import { mintEvent } from '@/lib/solana/utils';
 
 /**
  * Mints an event NFT on the Solana blockchain

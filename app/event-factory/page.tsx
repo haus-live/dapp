@@ -22,7 +22,7 @@ import { QuickAccess } from "@/components/quick-access"
 import { useAuth } from "@/contexts/auth-context"
 import { useEvents } from "@/contexts/events-context"
 import { v4 as uuidv4 } from "uuid"
-import { mintEvent } from "@/lib/solana/event-minter"
+import { mintEvent } from "@/lib/solana/utils"
 import { useSolanaWallet } from "@/contexts/solana-wallet-context"
 import { toast } from "@/components/ui/use-toast"
 import { clusterApiUrl, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
@@ -37,7 +37,7 @@ type Category =
   | "live-painting"
   | "creative-workshop"
 type SaleType = "cumulative-tips" | "blind-auction" | "quadratic-tipping"
-type Duration = 15 | 30 | 60
+type Duration = 15 | 30 | 45
 
 export default function EventFactory() {
   const router = useRouter()
@@ -53,12 +53,12 @@ export default function EventFactory() {
     banner: null as File | null,
     date: null as Date | null,
     time: "19:00",
-    duration: 30 as Duration,
+    duration: 15 as Duration,
     saleType: "cumulative-tips" as SaleType,
-    reservePrice: 30 / 500, // Default based on duration/500
+    reservePrice: 15 / 500, // Default based on duration/500
     useCustomReservePrice: false,
     ticketsAmount: 100,
-    ticketPrice: 30 / 500, // Default based on duration/500
+    ticketPrice: 15 / 500, // Default based on duration/500
     useCustomTicketPrice: false,
     noCap: false,
   })
@@ -627,10 +627,11 @@ export default function EventFactory() {
                 <h3 className="text-xl font-medium">Duration</h3>
                 <p className="text-sm text-muted-foreground">
                   Select how long your event will last. This will affect the default pricing.
+                  <span className="block text-amber-600 mt-1 font-medium">Note: Only 15, 30, or 45 minute durations are supported by the Solana program.</span>
                 </p>
 
                 <div className="flex space-x-4">
-                  {[15, 30, 60].map((duration) => (
+                  {[15, 30, 45].map((duration) => (
                     <button
                       key={duration}
                       className={`border rounded-lg p-4 flex items-center ${

@@ -238,4 +238,24 @@ Environment variables should be configured as described in `env.md` with appropr
 - Solana RPC endpoints
 - IPFS gateway and API keys
 - Authentication service endpoints
-- Media streaming configuration 
+- Media streaming configuration
+
+## Recent Updates and Fixes
+
+### Event Minting System Improvements
+
+The event minting system has been improved with several critical fixes:
+
+1. **Fixed Duration Handling**: Updated `event-minter.ts` to use actual event start and end times from metadata rather than hardcoded test durations, ensuring proper event scheduling.
+
+2. **Enhanced Error Handling**: Added comprehensive error handling throughout the event creation flow with specific error messages for different failure scenarios.
+
+3. **Input Validation**: Added validation for form data including ticket price, ticket amount, and reserve price to prevent invalid parameters from being submitted.
+
+4. **Art Category Handling**: Improved category mapping in `art-category.ts` with normalization of input values, support for variations in category names, and robust defaults for unknown values.
+
+5. **Serialization Improvements**: Enhanced Borsh serialization in `borsh-helper.ts` with proper validation, error handling, and debugging to ensure correct on-chain data representation.
+
+6. **Wallet Connection Verification**: Added additional validation for wallet connection status before attempting transaction signing.
+
+These improvements ensure more reliable event creation, better error messages for users, and increased compatibility with the Solana program's requirements. 

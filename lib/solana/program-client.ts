@@ -8,7 +8,12 @@ import {
 } from '@solana/web3.js';
 import { CreateEventParams } from '../event-metadata';
 import { SOLANA_PROGRAM_ID } from '../env';
-import { createAnchorProvider, createHausProgram, getEventPDA } from './anchor-utils';
+import { 
+  createAnchorProvider, 
+  createHausProgram, 
+  getEventPDA,
+  mapCategoryToVariant 
+} from './utils';
 
 // Debug logging for program interactions
 const debug = (message: string, data?: any) => {
@@ -151,9 +156,16 @@ export class HausProgramClient {
           // If we received a numeric index, convert it to the variant object
           debug("Converting numeric art category to variant object", artCategoryForAnchor);
           
-          // Use our helper to convert numbers to variant objects
-          const { numberToVariant } = require('./art-category');
-          artCategoryForAnchor = numberToVariant(artCategoryForAnchor);
+          // Convert numeric category index to variant object
+          switch(artCategoryForAnchor) {
+            case 0: artCategoryForAnchor = { standupComedy: {} }; break;
+            case 1: artCategoryForAnchor = { performanceArt: {} }; break;
+            case 2: artCategoryForAnchor = { poetrySlam: {} }; break;
+            case 3: artCategoryForAnchor = { openMicImprov: {} }; break;
+            case 4: artCategoryForAnchor = { livePainting: {} }; break;
+            case 5: artCategoryForAnchor = { creatingWorkshop: {} }; break;
+            default: artCategoryForAnchor = { performanceArt: {} }; break;
+          }
         }
         
         debug("Using category for Anchor instruction", {

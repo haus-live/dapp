@@ -1,7 +1,7 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { web3 } from "@project-serum/anchor";
 import { SOLANA_RPC_URL, SOLANA_PROGRAM_ID } from "../lib/env";
-import { createAnchorProvider, createHausProgram, getEventPDA } from "../lib/solana/anchor-utils";
+import { createAnchorProvider, createHausProgram, getEventPDA } from "../lib/solana/utils";
 
 // Set up program ID and RPC from centralized environment variables
 const programId = new PublicKey(SOLANA_PROGRAM_ID);
